@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Phuket Weather Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root { --summary-bg: #FFF3E0; --overflow-color: #041C32; }
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; background: #fafafa; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .subtitle { color: #666; margin-bottom: 16px; font-size: 13px; }
+
+  .loader { border: 2px dashed #90caf9; border-radius: 8px; padding: 16px 20px; margin-bottom: 18px;
+            background: #f4f9ff; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .loader.dragover { background: #e3f2fd; border-color: #1565C0; }
+  .loader button { padding: 8px 14px; font-size: 13px; border-radius: 6px; border: 1px solid #1565C0;
+                   background: #1565C0; color: #fff; cursor: pointer; }
+  .loader button:hover { background: #0d47a1; }
+  #fileStatus { font-size: 13px; color: #555; }
+  #fileStatus.error { color: #c62828; font-weight: 600; }
+  #fileStatus.ok { color: #2e7d32; }
+
+  .controls { display: flex; gap: 24px; margin-bottom: 16px; align-items: center; }
+  .controls label { font-weight: 600; margin-right: 8px; }
+  select { padding: 6px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; }
+  table { border-collapse: collapse; font-size: 12px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: center; min-width: 46px; }
+  th { background: #f0f0f0; position: sticky; top: 0; }
+  td.datecol, th.datecol { position: sticky; left: 0; background: #f0f0f0; font-weight: 600; text-align: left; min-width: 90px; }
+  td.summary { background: var(--summary-bg); font-weight: 600; }
+
+  /* Rainfall cells: fixed-height container with a bottom-anchored bar whose
+     height represents the value (capped), coloured light -> dark blue. */
+  td.rain-cell { position: relative; height: 56px; padding: 2px 4px; vertical-align: bottom; }
+  td.rain-cell .bar { position: absolute; left: 4px; right: 4px; bottom: 0; border-radius: 3px 3px 0 0; transition: height 0.15s; }
+  td.rain-cell .val { position: relative; z-index: 1; font-weight: 600; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+  td.rain-cell.overflow .val { color: #fff; text-shadow: none; }
+
+  /* Wind Speed / Land Visibility cells: plain number, no colour or bar. */
+  td.plain-cell { height: 56px; vertical-align: middle; }
+
+  .wrap { max-height: 70vh; overflow: auto; border-radius: 6px; }
+  .empty { color: #999; }
+  .legend { font-size: 12px; color: #555; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+  .legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 2px; vertical-align: middle; }
+  .placeholder { color: #888; font-size: 13px; padding: 20px; }
+</style>
+</head>
+<body>
+  <h1>Phuket Weather Dashboard</h1>
+  <div class="subtitle">Reads Phuket_Weather.xlsx directly in your browser -- always shows the real, current raw data, never a baked-in snapshot.</div>
+
+  <div id="loader" class="loader">
+    <button id="refreshBtn">Refresh from Server</button>
+    <button id="pickBtn">Load Local File</button>
+    <span id="fileStatus">Loading latest data from the server...</span>
+    <input type="file" id="fileInput" accept=".xlsx" style="display:none">
+  </div>
+
+  <div class="controls">
+    <div><label for="metric">Metric:</label><select id="metric"></select></div>
+    <div><label for="station">Station:</label><select id="station"></select></div>
+  </div>
+  <div id="legend" class="legend"></div>
+  <div class="wrap"><table id="grid"></table></div>
+
+<script>
+const CONFIG = {"data_sheet_name": "Phuket Weather", "xlsx_filename": "Phuket_Weather.xlsx", "metrics": [{"code": "Rain", "column": "Rainfall_mm", "label": "Rainfall (mm)"}, {"code": "Wind", "column": "WindSpeed", "label": "Wind Speed (km/h)"}, {"code": "Vis", "column": "LandVisibility", "label": "Land Visibility (km)"}], "stations": [{"code": "AIRPORT", "label_raw": "PHUKET AIRPORT", "label_display": "Phuket Airport"}, {"code": "PHUKET", "label_raw": "PHUKET", "label_display": "Phuket"}, {"code": "COMBINED", "label_raw": "PHUKET (COMBINED)", "label_display": "Phuket (Combined)"}], "rainfall_cap": 8};
+const RAIN_CAP = CONFIG.rainfall_cap;
+
+const metricSel = document.getElementById('metric');
+const stationSel = document.getElementById('station');
+const legendEl = document.getElementById('legend');
+const fileInput = document.getElementById('fileInput');
+const pickBtn = document.getElementById('pickBtn');
+const loaderEl = document.getElementById('loader');
+const statusEl = document.getElementById('fileStatus');
+const table = document.getElementById('grid');
+
+let DATA = null;
+
+// Dropdowns come from CONFIG (fixed metadata) and are ready immediately,
+// before any file is loaded.
+CONFIG.metrics.forEach(m => {
+  const opt = document.createElement('option');
+  opt.value = m.code; opt.textContent = m.label;
+  metricSel.appendChild(opt);
+});
+CONFIG.stations.forEach(s => {
+  const opt = document.createElement('option');
+  opt.value = s.code; opt.textContent = s.label_display;
+  if (s.code === 'COMBINED') opt.selected = true;
+  stationSel.appendChild(opt);
+});
+
+pickBtn.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => {
+  if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
+});
+['dragover', 'dragenter'].forEach(evt => loaderEl.addEventListener(evt, e => {
+  e.preventDefault(); loaderEl.classList.add('dragover');
+}));
+['dragleave', 'drop'].forEach(evt => loaderEl.addEventListener(evt, e => {
+  e.preventDefault(); loaderEl.classList.remove('dragover');
+}));
+loaderEl.addEventListener('drop', e => {
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+function setStatus(msg, cls) {
+  statusEl.textContent = msg;
+  statusEl.className = cls || '';
+}
+
+function loadFile(file) {
+  setStatus('Reading ' + file.name + '...', '');
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true });
+      const sheet = wb.Sheets[CONFIG.data_sheet_name];
+      if (!sheet) {
+        setStatus(`Couldn't find a "${CONFIG.data_sheet_name}" sheet in ${file.name}.`, 'error');
+        return;
+      }
+      const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+      DATA = buildDataFromRows(rows);
+      const now = new Date();
+      setStatus(`Loaded ${file.name} (${rows.length} row(s)) at ${now.toLocaleTimeString()}.`, 'ok');
+      render();
+    } catch (err) {
+      setStatus('Error reading file: ' + err.message, 'error');
+    }
+  };
+  reader.onerror = () => setStatus('Could not read the file.', 'error');
+  reader.readAsArrayBuffer(file);
+}
+
+function pad(n) { return n.toString().padStart(2, '0'); }
+
+function parseDateTime(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const d = (v instanceof Date) ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// Groups raw rows by Station -> Date -> TimeOfDay -> {column: [values]}, then
+// reduces to grid/summary payloads per Metric x Station -- same shape/logic
+// as the Excel pivot used to produce, just computed here instead of Python.
+// Rows with a blank/unparseable DateTime are skipped (this is the same fix
+// as the '<' not supported between float and str bug from the Excel version).
+function buildDataFromRows(rows) {
+  const buckets = {};   // station -> date -> time -> {col: [values]}
+  const dateSet = new Set();
+  const timeSet = new Set();
+  const columns = CONFIG.metrics.map(m => m.column);
+
+  rows.forEach(row => {
+    const dt = parseDateTime(row.DateTime);
+    const station = row.Station;
+    if (!dt || !station) return;
+
+    const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    dateSet.add(dateStr); timeSet.add(timeStr);
+
+    buckets[station] = buckets[station] || {};
+    buckets[station][dateStr] = buckets[station][dateStr] || {};
+    const slot = buckets[station][dateStr][timeStr] =
+      buckets[station][dateStr][timeStr] || Object.fromEntries(columns.map(c => [c, []]));
+
+    columns.forEach(col => {
+      const v = row[col];
+      if (v !== null && v !== undefined && v !== '' && !isNaN(Number(v))) slot[col].push(Number(v));
+    });
+  });
+
+  const dates = Array.from(dateSet).sort();
+  const times = Array.from(timeSet).sort((a, b) => {
+    const [ah, am] = a.split(':').map(Number), [bh, bm] = b.split(':').map(Number);
+    return (ah * 60 + am) - (bh * 60 + bm);
+  });
+
+  const round2 = x => Math.round(x * 100) / 100;
+  const mean = arr => arr.length ? round2(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
+  const payload = {};
+  CONFIG.metrics.forEach(m => {
+    payload[m.code] = {};
+    CONFIG.stations.forEach(s => {
+      const stationLabel = s.label_raw;
+      const grid = dates.map(d => times.map(t => {
+        const slot = buckets[stationLabel] && buckets[stationLabel][d] && buckets[stationLabel][d][t];
+        return slot ? mean(slot[m.column]) : null;
+      }));
+      const summary = grid.map(rowVals => {
+        const present = rowVals.filter(v => v !== null);
+        if (!present.length) return null;
+        return m.code === 'Rain' ? round2(present.reduce((a, b) => a + b, 0)) : mean(present);
+      });
+      payload[m.code][s.code] = { grid, summary };
+    });
+  });
+
+  return { dates, times, payload };
+}
+
+function rainColor(ratio) {
+  // light blue -> dark blue, ratio in [0,1]
+  const c1 = [227, 242, 253], c2 = [21, 101, 192];
+  const lerp = (a, b) => Math.round(a + (b - a) * ratio);
+  return `rgb(${lerp(c1[0], c2[0])}, ${lerp(c1[1], c2[1])}, ${lerp(c1[2], c2[2])})`;
+}
+
+function renderLegend(metric) {
+  legendEl.innerHTML = '';
+  if (metric !== 'Rain') return;
+  const items = [
+    [0, 'Light blue (0mm)'],
+    [0.5, 'Mid'],
+    [1, `Dark blue (${RAIN_CAP}mm)`],
+  ];
+  items.forEach(([ratio, label]) => {
+    const sw = document.createElement('span');
+    sw.className = 'swatch';
+    sw.style.background = rainColor(ratio);
+    legendEl.appendChild(sw);
+    legendEl.appendChild(document.createTextNode(label + '  '));
+  });
+  const overflowSw = document.createElement('span');
+  overflowSw.className = 'swatch';
+  overflowSw.style.background = 'var(--overflow-color)';
+  legendEl.appendChild(overflowSw);
+  legendEl.appendChild(document.createTextNode(`Above ${RAIN_CAP}mm (very dark)`));
+}
+
+function render() {
+  if (!DATA) {
+    table.innerHTML = '<tr><td class="placeholder">Load Phuket_Weather.xlsx above to see the dashboard.</td></tr>';
+    return;
+  }
+
+  const metric = metricSel.value;
+  const station = stationSel.value;
+  const combo = DATA.payload[metric][station];
+  const grid = combo.grid, summary = combo.summary;
+  const isRain = metric === 'Rain';
+
+  renderLegend(metric);
+
+  table.innerHTML = '';
+
+  const thead = document.createElement('tr');
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'datecol'}));
+  DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
+  const summaryTh = document.createElement('th');
+  summaryTh.textContent = 'Daily Summary';
+  thead.appendChild(summaryTh);
+  table.appendChild(thead);
+
+  DATA.dates.forEach((d, i) => {
+    const tr = document.createElement('tr');
+    const dateTd = document.createElement('td');
+    dateTd.textContent = d; dateTd.className = 'datecol';
+    tr.appendChild(dateTd);
+
+    grid[i].forEach(v => {
+      const td = document.createElement('td');
+
+      if (isRain) {
+        td.className = 'rain-cell';
+        if (v !== null) {
+          const overflow = v > RAIN_CAP;
+          const ratio = Math.min(v, RAIN_CAP) / RAIN_CAP;
+          const bar = document.createElement('div');
+          bar.className = 'bar';
+          bar.style.height = (ratio * 100) + '%';
+          bar.style.background = overflow ? 'var(--overflow-color)' : rainColor(ratio);
+          if (overflow) td.classList.add('overflow');
+          td.appendChild(bar);
+        } else {
+          td.classList.add('empty');
+        }
+        const span = document.createElement('span');
+        span.className = 'val';
+        span.textContent = v === null ? '' : v;
+        td.appendChild(span);
+      } else {
+        // Wind Speed / Land Visibility: plain number only, no colour/bar.
+        td.className = 'plain-cell';
+        td.textContent = v === null ? '' : v;
+        if (v === null) td.classList.add('empty');
+      }
+
+      tr.appendChild(td);
+    });
+
+    const sumTd = document.createElement('td');
+    sumTd.className = 'summary';
+    sumTd.textContent = summary[i] === null ? '' : summary[i];
+    tr.appendChild(sumTd);
+
+    table.appendChild(tr);
+  });
+}
+
+metricSel.addEventListener('change', render);
+stationSel.addEventListener('change', render);
+render();
+</script>
+</body>
+</html>
