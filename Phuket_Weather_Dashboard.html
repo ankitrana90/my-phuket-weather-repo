@@ -8,14 +8,12 @@
 <style>
   :root {
     --bg-color: #F8FAFC;
-    --card-bg: rgba(255, 255, 255, 0.72);
-    --card-border: rgba(232, 237, 243, 0.8);
-    --glass-shadow: 0 20px 40px -15px rgba(16, 20, 24, 0.05);
+    --card-bg: rgba(255, 255, 255, 0.85);
+    --card-border: rgba(226, 232, 240, 0.8);
+    --glass-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
     --primary-blue: #3A6FF7;
-    --cloud-gray: #E8EDF3;
-    --text-primary: #101418;
+    --text-primary: #0F172A;
     --text-muted: #64748B;
-    --accent-white: #FFFFFF;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -23,258 +21,191 @@
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
     background-color: var(--bg-color);
     color: var(--text-primary);
-    padding: 32px 24px;
-    max-width: 1200px;
+    padding: 24px;
+    max-width: 1300px;
     margin: 0 auto;
     -webkit-font-smoothing: antialiased;
   }
 
-  /* Header Section */
   header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
-    margin-bottom: 28px;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
   }
 
-  .location-title {
-    font-size: 32px;
+  h1 {
+    font-size: 26px;
     font-weight: 600;
-    letter-spacing: -0.8px;
-    color: var(--text-primary);
+    letter-spacing: -0.5px;
   }
 
   .subtitle {
-    font-size: 14px;
+    font-size: 13px;
     color: var(--text-muted);
-    font-weight: 400;
-    margin-top: 4px;
+    margin-top: 2px;
   }
 
-  .station-select {
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  select {
     appearance: none;
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    padding: 10px 16px;
-    border-radius: 20px;
+    padding: 8px 16px;
+    border-radius: 12px;
     font-size: 13px;
     font-weight: 500;
     color: var(--text-primary);
-    backdrop-filter: blur(20px);
+    outline: none;
     cursor: pointer;
     box-shadow: var(--glass-shadow);
-    outline: none;
-    transition: all 0.2s ease;
-  }
-  .station-select:hover { border-color: var(--primary-blue); }
-
-  /* Grid Layout */
-  .dashboard-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
   }
 
-  /* Shared Card Styling */
-  .card {
+  .grid-container {
     background: var(--card-bg);
     border: 1px solid var(--card-border);
-    border-radius: 24px;
-    backdrop-filter: blur(24px);
+    border-radius: 20px;
+    backdrop-filter: blur(20px);
     box-shadow: var(--glass-shadow);
-    overflow: hidden;
+    overflow: auto;
+    max-height: 75vh;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  th, td {
+    border-bottom: 1px solid var(--card-border);
+    border-right: 1px solid var(--card-border);
+    padding: 0;
+    min-width: 72px;
+    height: 60px;
+  }
+
+  th {
+    background: #F1F5F9;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    height: 40px;
+  }
+
+  td.datecol, th.datecol {
+    position: sticky;
+    left: 0;
+    background: #F1F5F9;
+    z-index: 11;
+    font-weight: 600;
+    text-align: left;
+    padding: 0 16px;
+    min-width: 110px;
+    color: var(--text-primary);
+  }
+
+  td.summary {
+    background: rgba(58, 111, 247, 0.08);
+    font-weight: 700;
+    color: var(--primary-blue);
+    vertical-align: middle;
+  }
+
+  .cell-wrapper {
     position: relative;
-  }
-
-  /* Hero Card: Full Width Rainfall */
-  .hero-card {
-    grid-column: span 2;
-    height: 380px;
+    width: 100%;
+    height: 100%;
     display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
   }
 
-  .hero-canvas {
+  .wave-bg {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, rgba(58, 111, 247, 0.4) 0%, rgba(58, 111, 247, 0.7) 100%);
+    transition: height 0.3s ease;
+  }
+
+  .wind-icon {
+    width: 16px;
+    height: 16px;
+    fill: #3A6FF7;
+    margin-right: 4px;
+    display: inline-block;
+    animation: spin linear infinite;
+  }
+  @keyframes spin { 100% { transform: rotate(360deg); } }
+
+  .fog-layer {
     position: absolute;
     inset: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(var(--fog-blur));
+    pointer-events: none;
   }
 
-  .card-overlay {
+  .cell-val {
     position: relative;
     z-index: 2;
-    padding: 28px;
-    pointer-events: none;
-  }
-
-  .floating-glass-pill {
-    display: inline-block;
-    background: rgba(255, 255, 255, 0.65);
-    border: 1px solid rgba(255, 255, 255, 0.8);
-    backdrop-filter: blur(16px);
-    padding: 16px 24px;
-    border-radius: 20px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.04);
-  }
-
-  .metric-label {
     font-size: 12px;
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    color: var(--text-muted);
-  }
-
-  .metric-value {
-    font-size: 42px;
-    font-weight: 600;
-    letter-spacing: -1.2px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-primary);
-    margin: 2px 0;
   }
-
-  .metric-status {
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--primary-blue);
-  }
-
-  /* Secondary Cards */
-  .secondary-card {
-    height: 280px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-  }
-
-  /* Trend Analytics Section */
-  .trends-section {
-    grid-column: span 2;
-    margin-top: 12px;
-    padding: 28px;
-  }
-
-  .chart-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-
-  .chart-container {
-    width: 100%;
-    height: 160px;
-    position: relative;
-  }
-
-  canvas.chart-canvas {
-    width: 100%;
-    height: 100%;
-  }
-
-  /* Interactive Sparkline Tooltip */
-  .chart-tooltip {
-    position: absolute;
-    display: none;
-    background: rgba(16, 20, 24, 0.85);
-    color: #FFF;
-    padding: 6px 12px;
-    border-radius: 8px;
-    font-size: 11px;
-    font-weight: 500;
-    pointer-events: none;
-    transform: translate(-50%, -120%);
-  }
-
-  /* Responsive Adjustments */
-  @media (max-width: 768px) {
-    .dashboard-grid { grid-template-columns: 1fr; }
-    .hero-card { grid-column: span 1; height: 320px; }
-    .trends-section { grid-column: span 1; }
-  }
+  .empty-val { color: #CBD5E1; }
 </style>
 </head>
 <body>
 
   <header>
     <div>
-      <h1 class="location-title">Phuket, Thailand</h1>
-      <div class="subtitle" id="timestamp">Syncing live atmospheric telemetry...</div>
+      <h1>Phuket Weather Intelligence</h1>
+      <div class="subtitle" id="timestamp">Syncing live data...</div>
     </div>
-    <select id="stationSelect" class="station-select"></select>
+    <div class="controls">
+      <select id="metricSel"></select>
+      <select id="stationSel"></select>
+    </div>
   </header>
 
-  <div class="dashboard-grid">
-
-    <!-- HERO CARD: RAINFALL EXPERIENCE -->
-    <div class="card hero-card">
-      <canvas id="rainCanvas" class="hero-canvas"></canvas>
-      <div class="card-overlay">
-        <div class="floating-glass-pill">
-          <div class="metric-label">Precipitation</div>
-          <div class="metric-value" id="rainVal">-- <span style="font-size:20px">mm</span></div>
-          <div class="metric-status" id="rainStatus">Calm Atmospheric State</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- WIND STREAMLINES CARD -->
-    <div class="card secondary-card">
-      <canvas id="windCanvas" class="hero-canvas"></canvas>
-      <div class="card-overlay">
-        <div class="floating-glass-pill">
-          <div class="metric-label">Wind Velocity</div>
-          <div class="metric-value" id="windVal">-- <span style="font-size:20px">km/h</span></div>
-          <div class="metric-status" id="windStatus">Directional Flow</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- VISIBILITY HORIZON CARD -->
-    <div class="card secondary-card">
-      <canvas id="visCanvas" class="hero-canvas"></canvas>
-      <div class="card-overlay">
-        <div class="floating-glass-pill">
-          <div class="metric-label">Visual Depth</div>
-          <div class="metric-value" id="visVal">-- <span style="font-size:20px">km</span></div>
-          <div class="metric-status" id="visStatus">Atmospheric Clarity</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- HISTORICAL TREND ANALYTICS -->
-    <div class="card trends-section">
-      <div class="chart-header">
-        <div>
-          <div class="metric-label">Atmospheric Trends</div>
-          <div style="font-size: 18px; font-weight:600; margin-top:2px;">Historical Records</div>
-        </div>
-      </div>
-      <div class="chart-container" id="chartContainer">
-        <div class="chart-tooltip" id="chartTooltip"></div>
-        <canvas id="trendChart" class="chart-canvas"></canvas>
-      </div>
-    </div>
-
+  <div class="grid-container">
+    <table id="gridTable"></table>
   </div>
 
 <script>
 const CONFIG = {"data_sheet_name": "Phuket Weather", "xlsx_filename": "Phuket_Weather.xlsx", "metrics": [{"code": "Rain", "column": "Rainfall_mm", "label": "Rainfall (mm)"}, {"code": "Wind", "column": "WindSpeed", "label": "Wind Speed (km/h)"}, {"code": "Vis", "column": "LandVisibility", "label": "Land Visibility (km)"}], "stations": [{"code": "AIRPORT", "label_raw": "PHUKET AIRPORT", "label_display": "Phuket Airport"}, {"code": "PHUKET", "label_raw": "PHUKET", "label_display": "Phuket"}, {"code": "COMBINED", "label_raw": "PHUKET (COMBINED)", "label_display": "Phuket (Combined)"}], "rainfall_cap": 8};
-const stationSelect = document.getElementById('stationSelect');
+const metricSel = document.getElementById('metricSel');
+const stationSel = document.getElementById('stationSel');
+const table = document.getElementById('gridTable');
 let DATA = null;
 
-// Populate Station Dropdown
+CONFIG.metrics.forEach(m => {
+  const opt = document.createElement('option');
+  opt.value = m.code; opt.textContent = m.label;
+  metricSel.appendChild(opt);
+});
+
 CONFIG.stations.forEach(s => {
   const opt = document.createElement('option');
   opt.value = s.code; opt.textContent = s.label_display;
   if (s.code === 'COMBINED') opt.selected = true;
-  stationSelect.appendChild(opt);
+  stationSel.appendChild(opt);
 });
 
-// Auto-Fetch live dataset from repository
 async function autoFetchServerData() {
   try {
     const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
@@ -287,11 +218,10 @@ async function autoFetchServerData() {
 
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
     DATA = buildDataFromRows(rows);
-    
-    document.getElementById('timestamp').textContent = `Updated Live • ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-    renderDashboard();
+    document.getElementById('timestamp').textContent = `Updated • ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    renderGrid();
   } catch (err) {
-    document.getElementById('timestamp').textContent = 'Displaying static atmospheric telemetry cache';
+    document.getElementById('timestamp').textContent = 'Displaying static cache';
   }
 }
 
@@ -343,287 +273,105 @@ function buildDataFromRows(rows) {
         const slot = buckets[stationLabel] && buckets[stationLabel][d] && buckets[stationLabel][d][t];
         return slot ? mean(slot[m.column]) : null;
       }));
-      payload[m.code][s.code] = { grid, dates, times };
+      const summary = grid.map(rowVals => {
+        const present = rowVals.filter(v => v !== null);
+        if (!present.length) return null;
+        return m.code === 'Rain' ? round2(present.reduce((a, b) => a + b, 0)) : mean(present);
+      });
+      payload[m.code][s.code] = { grid, summary };
     });
   });
 
-  return payload;
+  return { dates, times, payload };
 }
 
-/* ------------------------------------------------------------------
-   ATMOSPHERIC CANVASES (Rain, Wind, Visibility)
------------------------------------------------------------------- */
-
-// 1. Rain Atmospheric Experience
-let rainAnimationId;
-function initRainCanvas(rainfall) {
-  const canvas = document.getElementById('rainCanvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-
-  cancelAnimationFrame(rainAnimationId);
-
-  const drops = [];
-  const count = Math.min(Math.floor(rainfall * 25) + 15, 350);
-  
-  for (let i = 0; i < count; i++) {
-    drops.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      length: Math.random() * 18 + 10,
-      speed: Math.random() * 8 + (rainfall > 10 ? 12 : 4),
-      opacity: Math.random() * 0.4 + 0.2
-    });
-  }
-
-  let flash = 0;
-
-  function animate() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    // Dynamic Cloud Gradient Background
-    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-    if (rainfall > 20) {
-      bgGrad.addColorStop(0, '#CBD5E1');
-      bgGrad.addColorStop(1, '#94A3B8');
-    } else {
-      bgGrad.addColorStop(0, '#E2E8F0');
-      bgGrad.addColorStop(1, '#F1F5F9');
-    }
-    ctx.fillStyle = bgGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Lightning Trigger for Heavy Rain (>20mm)
-    if (rainfall > 20 && Math.random() < 0.008) {
-      flash = 1;
-    }
-
-    if (flash > 0) {
-      ctx.fillStyle = `rgba(255, 255, 255, ${flash})`;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      flash -= 0.05;
-    }
-
-    // Render Rain Particles
-    ctx.strokeStyle = 'rgba(58, 111, 247, 0.45)';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    drops.forEach(d => {
-      ctx.moveTo(d.x, d.y);
-      ctx.lineTo(d.x - (rainfall > 10 ? 2 : 0), d.y + d.length);
-      d.y += d.speed;
-      d.x -= (rainfall > 10 ? 0.5 : 0);
-      if (d.y > canvas.height) {
-        d.y = -d.length;
-        d.x = Math.random() * canvas.width;
-      }
-    });
-    ctx.stroke();
-
-    rainAnimationId = requestAnimationFrame(animate);
-  }
-  animate();
-}
-
-// 2. Wind Streamlines Visualization
-let windAnimationId;
-function initWindCanvas(windSpeed) {
-  const canvas = document.getElementById('windCanvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-
-  cancelAnimationFrame(windAnimationId);
-
-  const particles = [];
-  const count = 40;
-  
-  for (let i = 0; i < count; i++) {
-    particles.push({
-      x: Math.random() * canvas.width,
-      y: Math.random() * canvas.height,
-      length: Math.random() * 40 + 20,
-      speed: (windSpeed / 5) + Math.random() * 1.5 + 0.8
-    });
-  }
-
-  function animate() {
-    ctx.fillStyle = '#F8FAFC';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    ctx.strokeStyle = 'rgba(100, 116, 139, 0.25)';
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-
-    particles.forEach(p => {
-      ctx.moveTo(p.x, p.y);
-      ctx.bezierCurveTo(
-        p.x + p.length * 0.3, p.y - 4,
-        p.x + p.length * 0.6, p.y + 4,
-        p.x + p.length, p.y
-      );
-      p.x += p.speed;
-      if (p.x > canvas.width + p.length) {
-        p.x = -p.length;
-        p.y = Math.random() * canvas.height;
-      }
-    });
-    ctx.stroke();
-
-    windAnimationId = requestAnimationFrame(animate);
-  }
-  animate();
-}
-
-// 3. Visibility Layered Horizon
-function initVisCanvas(vis) {
-  const canvas = document.getElementById('visCanvas');
-  const ctx = canvas.getContext('2d');
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
-
-  ctx.fillStyle = '#F1F5F9';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  // Calculate Haze / Fog Opacity based on distance
-  const fogOpacity = Math.max(0, 1 - (vis / 15));
-
-  // Layered Mountain Range Vectors
-  function drawDistantRidge(yOffset, color) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height);
-    ctx.lineTo(0, yOffset);
-    ctx.quadraticCurveTo(canvas.width * 0.25, yOffset - 30, canvas.width * 0.5, yOffset);
-    ctx.quadraticCurveTo(canvas.width * 0.75, yOffset + 20, canvas.width, yOffset - 10);
-    ctx.lineTo(canvas.width, canvas.height);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  drawDistantRidge(130, '#CBD5E1');
-  drawDistantRidge(170, '#94A3B8');
-
-  // Atmospheric Fog Overlay
-  if (fogOpacity > 0) {
-    ctx.fillStyle = `rgba(248, 250, 252, ${fogOpacity * 0.85})`;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-  }
-}
-
-/* ------------------------------------------------------------------
-   APPLE STOCKS-INSPIRED SPARKLINE CHART
------------------------------------------------------------------- */
-
-function initTrendChart(dates, values) {
-  const canvas = document.getElementById('trendChart');
-  const ctx = canvas.getContext('2d');
-  const container = document.getElementById('chartContainer');
-  
-  canvas.width = container.offsetWidth;
-  canvas.height = container.offsetHeight;
-
-  const padding = 20;
-  const w = canvas.width - padding * 2;
-  const h = canvas.height - padding * 2;
-
-  const maxVal = Math.max(...values.filter(v => v !== null), 10);
-  const minVal = 0;
-
-  const points = values.map((v, i) => {
-    if (v === null) return null;
-    const x = padding + (i / (values.length - 1)) * w;
-    const y = canvas.height - padding - ((v - minVal) / (maxVal - minVal)) * h;
-    return { x, y, val: v, date: dates[i] };
-  }).filter(p => p !== null);
-
-  if (points.length < 2) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Gradient Fill under curve
-  const fillGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
-  fillGrad.addColorStop(0, 'rgba(58, 111, 247, 0.2)');
-  fillGrad.addColorStop(1, 'rgba(58, 111, 247, 0.0)');
-
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 0; i < points.length - 1; i++) {
-    const xc = (points[i].x + points[i + 1].x) / 2;
-    const yc = (points[i].y + points[i + 1].y) / 2;
-    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
-  }
-  ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
-  ctx.lineTo(points[points.length - 1].x, canvas.height);
-  ctx.lineTo(points[0].x, canvas.height);
-  ctx.closePath();
-  ctx.fillStyle = fillGrad;
-  ctx.fill();
-
-  // Draw Smooth Curve Line
-  ctx.beginPath();
-  ctx.moveTo(points[0].x, points[0].y);
-  for (let i = 0; i < points.length - 1; i++) {
-    const xc = (points[i].x + points[i + 1].x) / 2;
-    const yc = (points[i].y + points[i + 1].y) / 2;
-    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
-  }
-  ctx.strokeStyle = '#3A6FF7';
-  ctx.lineWidth = 2.5;
-  ctx.stroke();
-}
-
-/* ------------------------------------------------------------------
-   MAIN DASHBOARD RENDER
------------------------------------------------------------------- */
-
-function renderDashboard() {
+function renderGrid() {
   if (!DATA) return;
 
-  const station = stationSelect.value;
-  const rainData = DATA.Rain[station];
-  const windData = DATA.Wind[station];
-  const visData = DATA.Vis[station];
+  const metric = metricSel.value;
+  const station = stationSel.value;
+  const combo = DATA.payload[metric][station];
+  const grid = combo.grid, summary = combo.summary;
 
-  // Latest Available Telemetry Metrics
-  const latestRain = rainData.grid.flat().filter(v => v !== null).pop() || 0;
-  const latestWind = windData.grid.flat().filter(v => v !== null).pop() || 0;
-  const latestVis = visData.grid.flat().filter(v => v !== null).pop() || 10;
+  table.innerHTML = '';
 
-  // Render Display Values
-  document.getElementById('rainVal').innerHTML = `${latestRain} <span style="font-size:20px">mm</span>`;
-  document.getElementById('windVal').innerHTML = `${latestWind} <span style="font-size:20px">km/h</span>`;
-  document.getElementById('visVal').innerHTML = `${latestVis} <span style="font-size:20px">km</span>`;
+  // Header Row
+  const thead = document.createElement('tr');
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'datecol'}));
+  DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Summary'}));
+  table.appendChild(thead);
 
-  // Update Contextual Status Descriptors
-  document.getElementById('rainStatus').textContent = 
-    latestRain > 20 ? "Heavy Monsoon Activity" :
-    latestRain > 5  ? "Moderate Precipitation" : "Light Precipitation";
+  // Data Rows
+  DATA.dates.forEach((d, i) => {
+    const tr = document.createElement('tr');
 
-  document.getElementById('windStatus').textContent = 
-    latestWind > 25 ? "Gale Force Streams" :
-    latestWind > 10 ? "Moderate Airflow" : "Gentle Flow";
+    const dateTd = document.createElement('td');
+    dateTd.textContent = d; dateTd.className = 'datecol';
+    tr.appendChild(dateTd);
 
-  document.getElementById('visStatus').textContent = 
-    latestVis < 5  ? "Dense Fog Haze" :
-    latestVis < 10 ? "Moderate Haze" : "Optimal Conditions";
+    grid[i].forEach(v => {
+      const td = document.createElement('td');
+      const wrapper = document.createElement('div');
+      wrapper.className = 'cell-wrapper';
 
-  // Trigger Dynamic Atmospheric Canvases
-  initRainCanvas(latestRain);
-  initWindCanvas(latestWind);
-  initVisCanvas(latestVis);
+      if (metric === 'Rain') {
+        if (v !== null && v > 0) {
+          const fillRatio = Math.min(v, CONFIG.rainfall_cap) / CONFIG.rainfall_cap;
+          const wave = document.createElement('div');
+          wave.className = 'wave-bg';
+          wave.style.height = (fillRatio * 100) + '%';
+          wrapper.appendChild(wave);
+        }
+        const valSpan = document.createElement('span');
+        valSpan.className = 'cell-val' + (v === null ? ' empty-val' : '');
+        valSpan.textContent = v === null ? '-' : v;
+        wrapper.appendChild(valSpan);
 
-  // Render Historical Trend Line
-  const dailyRainTotals = rainData.grid.map(row => {
-    const valid = row.filter(v => v !== null);
-    return valid.length ? valid.reduce((a,b) => a+b, 0) : null;
+      } else if (metric === 'Wind') {
+        if (v !== null && v > 0) {
+          const spinSpeed = Math.max(0.2, 3 - (v / 10));
+          wrapper.innerHTML = `
+            <svg class="wind-icon" style="animation-duration: ${spinSpeed}s" viewBox="0 0 24 24">
+              <path d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4C13.2,4 14.18,4.86 14.36,6C13.5,6 12.7,6.36 12.12,6.94C11.54,7.5 11.18,8.3 11.18,9.18C10.3,9.18 9.5,9.54 8.92,10.12C8.34,10.7 8,11.5 8,12.38C8,13.56 8.86,14.54 10,14.72C10,15.58 10.36,16.38 10.94,16.96C11.5,17.54 12.3,17.9 13.18,17.9C14.36,17.9 15.34,17.04 15.52,15.88C16.4,15.88 17.2,15.5 17.78,14.94C18.36,14.36 18.72,13.56 18.72,12.68C18.72,11.5 17.86,10.5 16.7,10.34C16.7,9.46 16.34,8.66 15.76,8.08C15.18,7.5 14.38,7.14 13.5,7.14C13.5,5.96 12.64,5 11.5,5.18C11.66,4.5 12,4 12,4Z"/>
+            </svg>
+            <span class="cell-val">${v}</span>`;
+        } else {
+          wrapper.innerHTML = `<span class="cell-val ${v === null ? 'empty-val' : ''}">${v === null ? '-' : v}</span>`;
+        }
+
+      } else if (metric === 'Vis') {
+        if (v !== null) {
+          if (v < 10) {
+            const fog = document.createElement('div');
+            fog.className = 'fog-layer';
+            fog.style.setProperty('--fog-blur', `${Math.max(1, (10 - v) * 0.8)}px`);
+            wrapper.appendChild(fog);
+          }
+          const valSpan = document.createElement('span');
+          valSpan.className = 'cell-val';
+          valSpan.textContent = v;
+          wrapper.appendChild(valSpan);
+        } else {
+          wrapper.innerHTML = `<span class="cell-val empty-val">-</span>`;
+        }
+      }
+
+      td.appendChild(wrapper);
+      tr.appendChild(td);
+    });
+
+    const sumTd = document.createElement('td');
+    sumTd.className = 'summary';
+    sumTd.textContent = summary[i] === null ? '-' : summary[i];
+    tr.appendChild(sumTd);
+
+    table.appendChild(tr);
   });
-  initTrendChart(rainData.dates, dailyRainTotals);
 }
 
-stationSelect.addEventListener('change', renderDashboard);
-window.addEventListener('resize', renderDashboard);
+metricSel.addEventListener('change', renderGrid);
+stationSel.addEventListener('change', renderGrid);
 window.addEventListener('DOMContentLoaded', autoFetchServerData);
 </script>
 </body>
