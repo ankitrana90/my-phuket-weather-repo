@@ -1,10 +1,11 @@
 """
-TMD Phuket Weather -> Raw Excel Log + Time-Matrix Apple Weather Dashboard (Single Script).
+TMD Phuket Weather -> Raw Excel Log + Matrix Apple Weather Dashboard (Single Script).
 
 Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. The generated HTML dashboard
-(Phuket_Weather_Dashboard.html) features a Light Apple Weather matrix grid layout (Dates in rows, 
-Time slots in columns) to easily track rainfall timing across days, complete with fluid water levels,
-live rain particle animations, daily summary commentary, and weather emojis.
+(Phuket_Weather_Dashboard.html) features a Light Apple Weather matrix grid layout with:
+  - Dates in DESCENDING order (newest dates on top).
+  - Empty cells when value is 0 (no zeros displayed).
+  - Prominent timestamp display for the most recent observation fetched from TMD.
 """
 
 import argparse
@@ -278,7 +279,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     margin: 0 auto;
   }
 
-  /* Header Section */
   header {
     display: flex;
     justify-content: space-between;
@@ -357,7 +357,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     margin-top: 6px;
   }
 
-  /* Matrix Grid Section */
   .grid-title {
     font-size: 20px;
     font-weight: 600;
@@ -403,7 +402,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     padding-left: 16px;
   }
 
-  /* Date Info Cell */
   td.date-cell {
     text-align: left;
     padding: 12px 16px;
@@ -423,7 +421,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     margin-top: 4px;
   }
 
-  /* Time Slot Cells */
   td.time-cell {
     position: relative;
     width: 82px;
@@ -441,7 +438,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     border-color: var(--accent-blue);
   }
 
-  /* Embedded Water Level Animation Bar */
   .water-level-bar {
     position: absolute;
     left: 0; right: 0; bottom: 0;
@@ -451,7 +447,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     z-index: 1;
   }
 
-  /* Embedded Rain Particle Canvas */
   .cell-canvas {
     position: absolute;
     inset: 0;
@@ -484,12 +479,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     font-weight: 500;
   }
 
-  .empty-cell {
-    color: #CBD5E1;
-    font-size: 14px;
-  }
-
-  /* Summary Cell */
   td.summary-cell {
     text-align: left;
     padding: 12px 18px;
@@ -538,7 +527,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
       </div>
     </div>
 
-    <div class="grid-title">Time-of-Day Rainfall Matrix</div>
+    <div class="grid-title">Time-of-Day Rainfall Matrix (Descending Date Order)</div>
     
     <div class="matrix-wrapper">
       <table id="matrixTable"></table>
@@ -570,7 +559,10 @@ async function autoFetchServerData() {
 
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
     DATA = buildDataFromRows(rows);
-    document.getElementById('headerMeta').textContent = `Updated Live • ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    
+    document.getElementById('headerMeta').textContent = 
+      `Latest XML Record: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    
     renderMatrix();
   } catch (err) {
     document.getElementById('headerMeta').textContent = 'Displaying cached telemetry';
@@ -589,11 +581,16 @@ function buildDataFromRows(rows) {
   const dateSet = new Set();
   const timeSet = new Set();
   const columns = CONFIG.metrics.map(m => m.column);
+  let latestParsedDT = null;
 
   rows.forEach(row => {
     const dt = parseDateTime(row.DateTime);
     const station = row.Station;
     if (!dt || !station) return;
+
+    if (!latestParsedDT || dt > latestParsedDT) {
+      latestParsedDT = dt;
+    }
 
     const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
     const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
@@ -610,7 +607,8 @@ function buildDataFromRows(rows) {
     });
   });
 
-  const dates = Array.from(dateSet).sort();
+  // SORT DATES IN DESCENDING ORDER (Newest on top)
+  const dates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
   const times = Array.from(timeSet).sort((a, b) => a.localeCompare(b));
 
   const round2 = x => Math.round(x * 100) / 100;
@@ -634,10 +632,13 @@ function buildDataFromRows(rows) {
     });
   });
 
-  return { dates, times, payload };
+  const latestFormatted = latestParsedDT 
+    ? `${latestParsedDT.getFullYear()}-${pad(latestParsedDT.getMonth() + 1)}-${pad(latestParsedDT.getDate())} ${pad(latestParsedDT.getHours())}:${pad(latestParsedDT.getMinutes())}` 
+    : 'N/A';
+
+  return { dates, times, payload, latestDateTime: latestFormatted };
 }
 
-/* Dynamic Commentary & Emoji Evaluation */
 function evaluateWeather(rain) {
   if (rain >= 25) {
     return { emoji: '⛈️', commentary: 'Torrential downpours with thunder activity.' };
@@ -652,7 +653,6 @@ function evaluateWeather(rain) {
   }
 }
 
-/* In-Cell Rain Particle Canvas */
 function attachRainCanvas(canvasId, rainVal) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -704,12 +704,13 @@ function renderMatrix() {
   const station = stationSelect.value;
   const rainData = DATA.payload.Rain[station];
 
-  const latestRain = rainData.summary.filter(v => v !== null).pop() || 0;
+  // Most recent date summary (index 0 since dates are sorted descending)
+  const latestRain = rainData.summary[0] !== null ? rainData.summary[0] : 0;
   const latestEval = evaluateWeather(latestRain);
 
   document.getElementById('heroVal').textContent = `${latestRain} mm`;
   document.getElementById('heroEmoji').textContent = latestEval.emoji;
-  document.getElementById('heroStatus').textContent = `Latest Daily Summary • ${latestEval.commentary}`;
+  document.getElementById('heroStatus').textContent = `Latest Daily Summary (${DATA.dates[0]}) • ${latestEval.commentary}`;
 
   const table = document.getElementById('matrixTable');
   table.innerHTML = '';
@@ -721,7 +722,7 @@ function renderMatrix() {
   thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Commentary', className: 'summary-col'}));
   table.appendChild(thead);
 
-  // Date Rows
+  // Date Rows (Descending Order)
   DATA.dates.forEach((d, i) => {
     const tr = document.createElement('tr');
     
@@ -743,6 +744,7 @@ function renderMatrix() {
       const td = document.createElement('td');
       td.className = 'time-cell';
 
+      // HIDE IF 0 OR NULL
       if (v !== null && v > 0) {
         const fillPercent = Math.min(100, (v / CONFIG.rainfall_cap) * 100);
         
@@ -763,7 +765,8 @@ function renderMatrix() {
 
         setTimeout(() => attachRainCanvas(`canvas-${i}-${j}`, v), 50);
       } else {
-        td.innerHTML = `<div class="cell-content"><span class="${v === null ? 'empty-cell' : 'val-num'}">${v === null ? '-' : '0'}</span></div>`;
+        // Completely empty cell when 0 or null
+        td.innerHTML = `<div class="cell-content"></div>`;
       }
 
       tr.appendChild(td);
@@ -773,7 +776,7 @@ function renderMatrix() {
     const sumTd = document.createElement('td');
     sumTd.className = 'summary-cell';
     sumTd.innerHTML = `
-      <div class="summary-val">${totalRain} mm Total</div>
+      <div class="summary-val">${totalRain > 0 ? totalRain + ' mm Total' : '0 mm'}</div>
       <div class="summary-commentary">${evalData.commentary}</div>
     `;
     tr.appendChild(sumTd);
