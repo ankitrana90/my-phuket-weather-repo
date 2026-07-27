@@ -1,0 +1,43 @@
+name: Update Phuket Weather Data
+
+on:
+  schedule:
+    # Runs at minute 0 every 3 hours (00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 UTC)
+    - cron: '0 */3 * * *'
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # Grants permission to push updated files back to repo
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run TMD Weather Script
+        env:
+          TMD_UID: ${{ secrets.TMD_UID }}
+          TMD_UKEY: ${{ secrets.TMD_UKEY }}
+        run: |
+          python tmd_weather_dashboard_bot.py --once
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add Phuket_Weather.xlsx Phuket_Weather_Dashboard.html
+          git diff-index --quiet HEAD || git commit -m "Automated weather data update [skip ci]"
+          git push
