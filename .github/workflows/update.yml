@@ -2,7 +2,7 @@ name: Update Phuket Weather Data
 
 on:
   schedule:
-    # Runs every 3 hours
+    # Runs at minute 0 every 3 hours (00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 UTC)
     - cron: '0 */3 * * *'
   workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
 
@@ -11,14 +11,14 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write # Allows committing the updated Excel and HTML back to the repo
+      contents: write # Required to push updated Excel & HTML files back to the repository
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -28,9 +28,6 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run TMD Weather Script
-        env:
-          TMD_UID: ${{ secrets.TMD_UID }}
-          TMD_UKEY: ${{ secrets.TMD_UKEY }}
         run: |
           python tmd_weather_dashboard_bot.py --once
 
