@@ -2,23 +2,23 @@ name: Update Phuket Weather Data
 
 on:
   schedule:
-    # Runs at minute 0 every 3 hours (00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 UTC)
+    # Runs every 3 hours
     - cron: '0 */3 * * *'
-  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write # Grants permission to push updated files back to repo
+      contents: write # Allows committing the updated Excel and HTML back to the repo
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
