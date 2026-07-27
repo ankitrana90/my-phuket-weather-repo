@@ -1,10 +1,10 @@
 """
-TMD Phuket Weather -> Raw Excel Log + Light Apple Weather Dashboard (Single Script).
+TMD Phuket Weather -> Raw Excel Log + Time-Matrix Apple Weather Dashboard (Single Script).
 
 Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. The generated HTML dashboard
-(Phuket_Weather_Dashboard.html) features a Light Theme Apple Weather aesthetic, displaying
-daily tiles with dynamic liquid levels, live rain particle canvases, smart meteorological
-commentary, and native condition emojis.
+(Phuket_Weather_Dashboard.html) features a Light Apple Weather matrix grid layout (Dates in rows, 
+Time slots in columns) to easily track rainfall timing across days, complete with fluid water levels,
+live rain particle animations, daily summary commentary, and weather emojis.
 """
 
 import argparse
@@ -254,7 +254,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <style>
   :root {
     --bg-light: #F8FAFC;
-    --card-bg: rgba(255, 255, 255, 0.75);
+    --card-bg: rgba(255, 255, 255, 0.85);
     --card-border: 1px solid rgba(226, 232, 240, 0.8);
     --card-shadow: 0 15px 35px -10px rgba(15, 23, 42, 0.05);
     --text-primary: #0F172A;
@@ -274,7 +274,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   .container {
-    max-width: 1100px;
+    max-width: 1280px;
     margin: 0 auto;
   }
 
@@ -283,11 +283,11 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     display: flex;
     justify-content: space-between;
     align-items: flex-end;
-    margin-bottom: 28px;
+    margin-bottom: 24px;
   }
 
   .location-info h1 {
-    font-size: 36px;
+    font-size: 32px;
     font-weight: 600;
     letter-spacing: -0.8px;
     color: var(--text-primary);
@@ -325,12 +325,12 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     border: var(--card-border);
     backdrop-filter: blur(25px);
     border-radius: 28px;
-    padding: 32px;
+    padding: 28px 32px;
     box-shadow: var(--card-shadow);
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 32px;
+    margin-bottom: 28px;
   }
 
   .hero-left {
@@ -340,12 +340,12 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   .hero-emoji {
-    font-size: 54px;
+    font-size: 48px;
     line-height: 1;
   }
 
   .hero-val {
-    font-size: 52px;
+    font-size: 44px;
     font-weight: 300;
     letter-spacing: -1.5px;
     line-height: 1;
@@ -357,54 +357,102 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     margin-top: 6px;
   }
 
-  /* Daily Tiles Grid */
+  /* Matrix Grid Section */
   .grid-title {
     font-size: 20px;
     font-weight: 600;
     letter-spacing: -0.4px;
-    margin-bottom: 18px;
+    margin-bottom: 16px;
   }
 
-  .tiles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 20px;
-  }
-
-  /* Daily Weather Tile */
-  .day-tile {
-    position: relative;
+  .matrix-wrapper {
     background: var(--card-bg);
     border: var(--card-border);
-    backdrop-filter: blur(20px);
+    backdrop-filter: blur(25px);
     border-radius: 24px;
-    padding: 24px;
     box-shadow: var(--card-shadow);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    min-height: 180px;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    overflow: auto;
+    padding: 12px;
   }
 
-  .day-tile:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.08);
+  table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 10px;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  th {
+    padding: 12px 8px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: -0.2px;
+  }
+
+  th.date-col {
+    text-align: left;
+    padding-left: 16px;
+    min-width: 150px;
+  }
+
+  th.summary-col {
+    min-width: 220px;
+    text-align: left;
+    padding-left: 16px;
+  }
+
+  /* Date Info Cell */
+  td.date-cell {
+    text-align: left;
+    padding: 12px 16px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 16px;
+    border: 1px solid rgba(226, 232, 240, 0.6);
+  }
+
+  .date-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  .date-emoji {
+    font-size: 20px;
+    margin-top: 4px;
+  }
+
+  /* Time Slot Cells */
+  td.time-cell {
+    position: relative;
+    width: 82px;
+    height: 80px;
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 16px;
+    border: 1px solid rgba(226, 232, 240, 0.6);
+    overflow: hidden;
+    vertical-align: middle;
+    transition: transform 0.2s ease, border-color 0.2s ease;
+  }
+
+  td.time-cell:hover {
+    transform: scale(1.04);
+    border-color: var(--accent-blue);
   }
 
   /* Embedded Water Level Animation Bar */
   .water-level-bar {
     position: absolute;
     left: 0; right: 0; bottom: 0;
-    background: linear-gradient(180deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.3) 100%);
+    background: linear-gradient(180deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.45) 100%);
     transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: none;
     z-index: 1;
   }
 
   /* Embedded Rain Particle Canvas */
-  .tile-canvas {
+  .cell-canvas {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -413,45 +461,58 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     z-index: 2;
   }
 
-  .tile-content {
+  .cell-content {
     position: relative;
     z-index: 3;
-  }
-
-  .tile-header {
     display: flex;
-    justify-content: space-between;
+    flex-direction: column;
     align-items: center;
-    margin-bottom: 12px;
+    justify-content: center;
+    height: 100%;
   }
 
-  .tile-date {
-    font-size: 16px;
+  .val-num {
+    font-size: 15px;
     font-weight: 600;
+    letter-spacing: -0.3px;
     color: var(--text-primary);
   }
 
-  .tile-emoji {
-    font-size: 28px;
-  }
-
-  .tile-value {
-    font-size: 34px;
-    font-weight: 300;
-    letter-spacing: -1px;
-    color: var(--text-primary);
-  }
-
-  .tile-commentary {
-    font-size: 13px;
+  .val-unit {
+    font-size: 10px;
     color: var(--text-secondary);
-    line-height: 1.4;
-    margin-top: 12px;
+    font-weight: 500;
   }
 
-  @media (max-width: 640px) {
-    .tiles-grid { grid-template-columns: 1fr; }
-    .hero-card { flex-direction: column; align-items: flex-start; gap: 20px; }
+  .empty-cell {
+    color: #CBD5E1;
+    font-size: 14px;
+  }
+
+  /* Summary Cell */
+  td.summary-cell {
+    text-align: left;
+    padding: 12px 18px;
+    background: rgba(59, 130, 246, 0.06);
+    border-radius: 16px;
+    border: 1px solid rgba(59, 130, 246, 0.15);
+  }
+
+  .summary-val {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--accent-blue);
+  }
+
+  .summary-commentary {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+    margin-top: 4px;
+  }
+
+  @media (max-width: 768px) {
+    .hero-card { flex-direction: column; align-items: flex-start; gap: 16px; }
   }
 </style>
 </head>
@@ -461,7 +522,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     <header>
       <div class="location-info">
         <h1>Phuket, Thailand</h1>
-        <div class="meta" id="headerMeta">Syncing live data...</div>
+        <div class="meta" id="headerMeta">Syncing live telemetry...</div>
       </div>
       <select id="stationSelect" class="station-select"></select>
     </header>
@@ -472,13 +533,16 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
         <div class="hero-emoji" id="heroEmoji">🌦️</div>
         <div>
           <div class="hero-val" id="heroVal">-- mm</div>
-          <div class="hero-status" id="heroStatus">Scanning precipitation...</div>
+          <div class="hero-status" id="heroStatus">Scanning precipitation pattern...</div>
         </div>
       </div>
     </div>
 
-    <div class="grid-title">Daily Weather Intelligence</div>
-    <div class="tiles-grid" id="tilesGrid"></div>
+    <div class="grid-title">Time-of-Day Rainfall Matrix</div>
+    
+    <div class="matrix-wrapper">
+      <table id="matrixTable"></table>
+    </div>
   </div>
 
 <script>
@@ -507,7 +571,7 @@ async function autoFetchServerData() {
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
     DATA = buildDataFromRows(rows);
     document.getElementById('headerMeta').textContent = `Updated Live • ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-    renderTiles();
+    renderMatrix();
   } catch (err) {
     document.getElementById('headerMeta').textContent = 'Displaying cached telemetry';
   }
@@ -576,19 +640,19 @@ function buildDataFromRows(rows) {
 /* Dynamic Commentary & Emoji Evaluation */
 function evaluateWeather(rain) {
   if (rain >= 25) {
-    return { emoji: '⛈️', commentary: 'Torrential downpours with elevated thunder activity.' };
+    return { emoji: '⛈️', commentary: 'Torrential downpours with thunder activity.' };
   } else if (rain >= 12) {
-    return { emoji: '🌧️', commentary: 'Heavy monsoon rainfall expected throughout the day.' };
+    return { emoji: '🌧️', commentary: 'Heavy monsoon rainfall across multiple hours.' };
   } else if (rain >= 4) {
-    return { emoji: '🌦️', commentary: 'Passing scattered rain showers across the island.' };
+    return { emoji: '🌦️', commentary: 'Passing scattered showers throughout the day.' };
   } else if (rain > 0) {
-    return { emoji: '🌤️', commentary: 'Light intermittent drizzle with mostly dry intervals.' };
+    return { emoji: '🌤️', commentary: 'Light intermittent drizzle with dry intervals.' };
   } else {
-    return { emoji: '☀️', commentary: 'Optimal clear atmospheric conditions with no rainfall.' };
+    return { emoji: '☀️', commentary: 'Optimal clear conditions with no rain recorded.' };
   }
 }
 
-/* In-Tile Rain Particle Renderer */
+/* In-Cell Rain Particle Canvas */
 function attachRainCanvas(canvasId, rainVal) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -599,25 +663,25 @@ function attachRainCanvas(canvasId, rainVal) {
   if (rainVal <= 0) return;
 
   const particles = [];
-  const count = Math.min(Math.floor(rainVal * 6) + 6, 80);
+  const count = Math.min(Math.floor(rainVal * 8) + 4, 40);
 
   for (let i = 0; i < count; i++) {
     particles.push({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      len: Math.random() * 12 + 6,
-      speed: Math.random() * 4 + 3
+      len: Math.random() * 10 + 5,
+      speed: Math.random() * 3 + 2.5
     });
   }
 
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = 'rgba(59, 130, 246, 0.35)';
+    ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     particles.forEach(p => {
       ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x - 1, p.y + p.len);
+      ctx.lineTo(p.x - 0.8, p.y + p.len);
       p.y += p.speed;
       if (p.y > canvas.height) {
         p.y = -p.len;
@@ -631,10 +695,9 @@ function attachRainCanvas(canvasId, rainVal) {
   render();
 }
 
-function renderTiles() {
+function renderMatrix() {
   if (!DATA) return;
 
-  // Clear previous animation loops
   activeCanvasRenderers.forEach(id => cancelAnimationFrame(id));
   activeCanvasRenderers = [];
 
@@ -648,38 +711,79 @@ function renderTiles() {
   document.getElementById('heroEmoji').textContent = latestEval.emoji;
   document.getElementById('heroStatus').textContent = `Latest Daily Summary • ${latestEval.commentary}`;
 
-  const tilesGrid = document.getElementById('tilesGrid');
-  tilesGrid.innerHTML = '';
+  const table = document.getElementById('matrixTable');
+  table.innerHTML = '';
 
+  // Header Row
+  const thead = document.createElement('tr');
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'date-col'}));
+  DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Commentary', className: 'summary-col'}));
+  table.appendChild(thead);
+
+  // Date Rows
   DATA.dates.forEach((d, i) => {
+    const tr = document.createElement('tr');
+    
     const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
     const evalData = evaluateWeather(totalRain);
-    
-    // Calculate water fill percentage (capped)
-    const fillPercent = Math.min(100, (totalRain / CONFIG.rainfall_cap) * 100);
 
-    const tile = document.createElement('div');
-    tile.className = 'day-tile';
-    tile.innerHTML = `
-      <div class="water-level-bar" style="height: ${fillPercent}%;"></div>
-      <canvas class="tile-canvas" id="canvas-${i}"></canvas>
-      <div class="tile-content">
-        <div class="tile-header">
-          <div class="tile-date">${d}</div>
-          <div class="tile-emoji">${evalData.emoji}</div>
-        </div>
-        <div class="tile-value">${totalRain} <span style="font-size:18px">mm</span></div>
-        <div class="tile-commentary">${evalData.commentary}</div>
-      </div>
+    // Date Cell
+    const dateTd = document.createElement('td');
+    dateTd.className = 'date-cell';
+    dateTd.innerHTML = `
+      <div class="date-title">${d}</div>
+      <div class="date-emoji">${evalData.emoji}</div>
     `;
+    tr.appendChild(dateTd);
 
-    tilesGrid.appendChild(tile);
-    setTimeout(() => attachRainCanvas(`canvas-${i}`, totalRain), 50);
+    // Hourly Cells Beside Date
+    DATA.times.forEach((t, j) => {
+      const v = rainData.grid[i][j];
+      const td = document.createElement('td');
+      td.className = 'time-cell';
+
+      if (v !== null && v > 0) {
+        const fillPercent = Math.min(100, (v / CONFIG.rainfall_cap) * 100);
+        
+        const waterBar = document.createElement('div');
+        waterBar.className = 'water-level-bar';
+        waterBar.style.height = `${fillPercent}%`;
+        td.appendChild(waterBar);
+
+        const canvas = document.createElement('canvas');
+        canvas.className = 'cell-canvas';
+        canvas.id = `canvas-${i}-${j}`;
+        td.appendChild(canvas);
+
+        const content = document.createElement('div');
+        content.className = 'cell-content';
+        content.innerHTML = `<span class="val-num">${v}</span><span class="val-unit">mm</span>`;
+        td.appendChild(content);
+
+        setTimeout(() => attachRainCanvas(`canvas-${i}-${j}`, v), 50);
+      } else {
+        td.innerHTML = `<div class="cell-content"><span class="${v === null ? 'empty-cell' : 'val-num'}">${v === null ? '-' : '0'}</span></div>`;
+      }
+
+      tr.appendChild(td);
+    });
+
+    // Daily Summary Cell
+    const sumTd = document.createElement('td');
+    sumTd.className = 'summary-cell';
+    sumTd.innerHTML = `
+      <div class="summary-val">${totalRain} mm Total</div>
+      <div class="summary-commentary">${evalData.commentary}</div>
+    `;
+    tr.appendChild(sumTd);
+
+    table.appendChild(tr);
   });
 }
 
-stationSelect.addEventListener('change', renderTiles);
-window.addEventListener('resize', renderTiles);
+stationSelect.addEventListener('change', renderMatrix);
+window.addEventListener('resize', renderMatrix);
 window.addEventListener('DOMContentLoaded', autoFetchServerData);
 </script>
 </body>
@@ -699,7 +803,7 @@ def run_cycle():
     print(f"Excel Data sheet updated: +{added} new row(s), {total} total.")
 
     generate_html_dashboard(HTML_PATH)
-    print(f"Light Apple Weather UI generated at {HTML_PATH}")
+    print(f"Matrix Apple Weather UI generated at {HTML_PATH}")
 
 def main():
     parser = argparse.ArgumentParser()
