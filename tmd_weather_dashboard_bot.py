@@ -368,10 +368,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     vertical-align: middle;
   }
 
-  /* ---------------------------------------------------
-     GRID CELL ATMOSPHERIC VISUALIZATIONS
-  --------------------------------------------------- */
-
   .cell-wrapper {
     position: relative;
     width: 100%;
@@ -382,7 +378,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     overflow: hidden;
   }
 
-  /* 1. Rainfall Wave Animation */
   .wave-bg {
     position: absolute;
     left: 0; right: 0; bottom: 0;
@@ -390,7 +385,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     transition: height 0.3s ease;
   }
 
-  /* 2. Wind Fan Animation */
   .wind-icon {
     width: 16px;
     height: 16px;
@@ -401,7 +395,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   }
   @keyframes spin { 100% { transform: rotate(360deg); } }
 
-  /* 3. Visibility Fog Layer */
   .fog-layer {
     position: absolute;
     inset: 0;
@@ -410,7 +403,6 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     pointer-events: none;
   }
 
-  /* Numeric Value Formatting */
   .cell-val {
     position: relative;
     z-index: 2;
@@ -558,13 +550,11 @@ function renderGrid() {
   // Data Rows
   DATA.dates.forEach((d, i) => {
     const tr = document.createElement('tr');
-    
-    // Date Label
+
     const dateTd = document.createElement('td');
     dateTd.textContent = d; dateTd.className = 'datecol';
     tr.appendChild(dateTd);
 
-    // Time Cells
     grid[i].forEach(v => {
       const td = document.createElement('td');
       const wrapper = document.createElement('div');
@@ -573,16 +563,97 @@ function renderGrid() {
       if (metric === 'Rain') {
         if (v !== null && v > 0) {
           const fillRatio = Math.min(v, CONFIG.rainfall_cap) / CONFIG.rainfall_cap;
-          constThis `SyntaxError` occurs because plain text / Markdown was pasted directly into `tmd_weather_dashboard_bot.py` around line 194 without being commented out or wrapped in a Python string.
+          const wave = document.createElement('div');
+          wave.className = 'wave-bg';
+          wave.style.height = (fillRatio * 100) + '%';
+          wrapper.appendChild(wave);
+        }
+        const valSpan = document.createElement('span');
+        valSpan.className = 'cell-val' + (v === null ? ' empty-val' : '');
+        valSpan.textContent = v === null ? '-' : v;
+        wrapper.appendChild(valSpan);
 
-### The Fix
+      } else if (metric === 'Wind') {
+        if (v !== null && v > 0) {
+          const spinSpeed = Math.max(0.2, 3 - (v / 10));
+          wrapper.innerHTML = `
+            <svg class="wind-icon" style="animation-duration: ${spinSpeed}s" viewBox="0 0 24 24">
+              <path d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4C13.2,4 14.18,4.86 14.36,6C13.5,6 12.7,6.36 12.12,6.94C11.54,7.5 11.18,8.3 11.18,9.18C10.3,9.18 9.5,9.54 8.92,10.12C8.34,10.7 8,11.5 8,12.38C8,13.56 8.86,14.54 10,14.72C10,15.58 10.36,16.38 10.94,16.96C11.5,17.54 12.3,17.9 13.18,17.9C14.36,17.9 15.34,17.04 15.52,15.88C16.4,15.88 17.2,15.5 17.78,14.94C18.36,14.36 18.72,13.56 18.72,12.68C18.72,11.5 17.86,10.5 16.7,10.34C16.7,9.46 16.34,8.66 15.76,8.08C15.18,7.5 14.38,7.14 13.5,7.14C13.5,5.96 12.64,5 11.5,5.18C11.66,4.5 12,4 12,4Z"/>
+            </svg>
+            <span class="cell-val">${v}</span>`;
+        } else {
+          wrapper.innerHTML = `<span class="cell-val ${v === null ? 'empty-val' : ''}">${v === null ? '-' : v}</span>`;
+        }
 
-Open `tmd_weather_dashboard_bot.py` around **line 194** and resolve it using one of the two options below:
+      } else if (metric === 'Vis') {
+        if (v !== null) {
+          if (v < 10) {
+            const fog = document.createElement('div');
+            fog.className = 'fog-layer';
+            fog.style.setProperty('--fog-blur', `${Math.max(1, (10 - v) * 0.8)}px`);
+            wrapper.appendChild(fog);
+          }
+          const valSpan = document.createElement('span');
+          valSpan.className = 'cell-val';
+          valSpan.textContent = v;
+          wrapper.appendChild(valSpan);
+        } else {
+          wrapper.innerHTML = `<span class="cell-val empty-val">-</span>`;
+        }
+      }
 
-#### Option 1: Comment out the text (Recommended)
-If this text is a comment or documentation note, prefix the lines with `#`:
+      td.appendChild(wrapper);
+      tr.appendChild(td);
+    });
 
-```python
-# To seamlessly blend modern UI elements into a traditional Day-wise x Time-wise grid, 
-# the key is layering and typographic hierarchy. The heat map background handles macro scanning, 
-# micro-visuals communicate state/trends at a glance, and subtle numeric formatting provides exact precision without cluttering the screen.
+    const sumTd = document.createElement('td');
+    sumTd.className = 'summary';
+    sumTd.textContent = summary[i] === null ? '-' : summary[i];
+    tr.appendChild(sumTd);
+
+    table.appendChild(tr);
+  });
+}
+
+metricSel.addEventListener('change', renderGrid);
+stationSel.addEventListener('change', renderGrid);
+window.addEventListener('DOMContentLoaded', autoFetchServerData);
+</script>
+</body>
+</html>
+"""
+
+# ----------------------------------------------------------------------------
+# Orchestration
+# ----------------------------------------------------------------------------
+
+def run_cycle():
+    print(f"[{datetime.now().isoformat()}] Fetching TMD feed...")
+    records = fetch_records()
+    print(f"Built {len(records)} row(s) (raw + combined) this cycle.")
+
+    added, total = update_excel(records)
+    print(f"Excel Data sheet updated: +{added} new row(s), {total} total.")
+
+    generate_html_dashboard(HTML_PATH)
+    print(f"Atmospheric HTML dashboard generated at {HTML_PATH}")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--once", action="store_true", help="Run a single cycle and exit")
+    args = parser.parse_args()
+
+    if args.once:
+        run_cycle()
+        return
+
+    while True:
+        try:
+            run_cycle()
+        except Exception as e:
+            print(f"Error this cycle: {e}")
+        print(f"Sleeping {INTERVAL_HOURS} hour(s)...")
+        time.sleep(INTERVAL_HOURS * 3600)
+
+if __name__ == "__main__":
+    main()
