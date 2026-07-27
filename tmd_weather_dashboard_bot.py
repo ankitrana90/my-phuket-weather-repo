@@ -1,9 +1,10 @@
 """
-TMD Phuket Weather -> Raw Excel Log + Grid-Based Atmospheric Dashboard (Single Script).
+TMD Phuket Weather -> Raw Excel Log + Cinematic Apple Weather UI (Single Script).
 
-Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. The interactive HTML dashboard
-(Phuket_Weather_Dashboard.html) features an Apple Weather-inspired grid layout (Date x Time-of-Day),
-incorporating dynamic fluid waves, animated wind indicators, atmospheric depth fog, and subtle numeric values.
+Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. The generated HTML dashboard
+(Phuket_Weather_Dashboard.html) features an Apple Weather / VisionOS inspired UI,
+complete with particle sky backdrops, frosted liquid glass cards, interactive hourly
+timeline tiles, and smooth Apple-style curved area charts.
 """
 
 import argparse
@@ -248,209 +249,464 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Meteorological Intelligence | Phuket</title>
+<title>Phuket Weather Intelligence</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root {
-    --bg-color: #F8FAFC;
-    --card-bg: rgba(255, 255, 255, 0.85);
-    --card-border: rgba(226, 232, 240, 0.8);
-    --glass-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.05);
-    --primary-blue: #3A6FF7;
-    --text-primary: #0F172A;
-    --text-muted: #64748B;
+    --deep-navy: #102A54;
+    --electric-blue: #2D7DFF;
+    --azure: #4A90FF;
+    --golden-white: #FFF4C6;
+    --danger-orange: #FF8A3D;
+    --glass-bg: rgba(255, 255, 255, 0.18);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.25);
+    --glass-shadow: 0 25px 70px rgba(0, 0, 0, 0.15);
+    --text-dark: #0B1320;
+    --text-light: #FFFFFF;
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
-    background-color: var(--bg-color);
-    color: var(--text-primary);
-    padding: 24px;
-    max-width: 1300px;
-    margin: 0 auto;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", sans-serif;
+    background: var(--deep-navy);
+    color: var(--text-light);
+    min-height: 100vh;
+    overflow-x: hidden;
     -webkit-font-smoothing: antialiased;
   }
 
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 16px;
-  }
-
-  h1 {
-    font-size: 26px;
-    font-weight: 600;
-    letter-spacing: -0.5px;
-  }
-
-  .subtitle {
-    font-size: 13px;
-    color: var(--text-muted);
-    margin-top: 2px;
-  }
-
-  .controls {
-    display: flex;
-    gap: 12px;
-    align-items: center;
-  }
-
-  select {
-    appearance: none;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    padding: 8px 16px;
-    border-radius: 12px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--text-primary);
-    outline: none;
-    cursor: pointer;
-    box-shadow: var(--glass-shadow);
-  }
-
-  .grid-container {
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 20px;
-    backdrop-filter: blur(20px);
-    box-shadow: var(--glass-shadow);
-    overflow: auto;
-    max-height: 75vh;
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    text-align: center;
-  }
-
-  th, td {
-    border-bottom: 1px solid var(--card-border);
-    border-right: 1px solid var(--card-border);
-    padding: 0;
-    min-width: 72px;
-    height: 60px;
-  }
-
-  th {
-    background: #F1F5F9;
-    color: var(--text-muted);
-    font-weight: 600;
-    font-size: 12px;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-    height: 40px;
-  }
-
-  td.datecol, th.datecol {
-    position: sticky;
-    left: 0;
-    background: #F1F5F9;
-    z-index: 11;
-    font-weight: 600;
-    text-align: left;
-    padding: 0 16px;
-    min-width: 110px;
-    color: var(--text-primary);
-  }
-
-  td.summary {
-    background: rgba(58, 111, 247, 0.08);
-    font-weight: 700;
-    color: var(--primary-blue);
-    vertical-align: middle;
-  }
-
-  .cell-wrapper {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-  }
-
-  .wave-bg {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    background: linear-gradient(180deg, rgba(58, 111, 247, 0.4) 0%, rgba(58, 111, 247, 0.7) 100%);
-    transition: height 0.3s ease;
-  }
-
-  .wind-icon {
-    width: 16px;
-    height: 16px;
-    fill: #3A6FF7;
-    margin-right: 4px;
-    display: inline-block;
-    animation: spin linear infinite;
-  }
-  @keyframes spin { 100% { transform: rotate(360deg); } }
-
-  .fog-layer {
-    position: absolute;
-    inset: 0;
-    background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(var(--fog-blur));
+  /* Sky Particle Backdrop Canvas */
+  #skyCanvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    z-index: 1;
     pointer-events: none;
   }
 
-  .cell-val {
+  /* Layout Wrapper */
+  .app-container {
     position: relative;
     z-index: 2;
-    font-size: 12px;
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-    color: var(--text-primary);
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 32px 24px 64px 24px;
   }
-  .empty-val { color: #CBD5E1; }
+
+  /* Header Section */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 24px;
+  }
+
+  .header-title h1 {
+    font-size: 38px;
+    font-weight: 300;
+    letter-spacing: -0.8px;
+  }
+
+  .header-title .meta {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+  }
+
+  .station-picker {
+    appearance: none;
+    background: var(--glass-bg);
+    border: var(--glass-border);
+    backdrop-filter: blur(25px);
+    color: var(--text-light);
+    padding: 10px 18px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 400;
+    outline: none;
+    cursor: pointer;
+    transition: transform 0.3s ease, background 0.3s ease;
+  }
+  .station-picker:hover {
+    transform: translateY(-2px);
+    background: rgba(255, 255, 255, 0.28);
+  }
+  .station-picker option {
+    background: var(--deep-navy);
+    color: var(--text-light);
+  }
+
+  /* Glass Card Base Styling */
+  .glass-card {
+    background: var(--glass-bg);
+    border: var(--glass-border);
+    backdrop-filter: blur(25px);
+    border-radius: 28px;
+    box-shadow: var(--glass-shadow);
+    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease;
+  }
+  .glass-card:hover {
+    transform: translateY(-4px);
+    background: rgba(255, 255, 255, 0.24);
+  }
+
+  /* Hero Display (Top 35% Screen Height) */
+  .hero-section {
+    padding: 36px 40px;
+    margin-bottom: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-main .condition-tag {
+    display: inline-block;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+
+  .hero-main .hero-temp {
+    font-size: 64px;
+    font-weight: 300;
+    line-height: 1;
+    letter-spacing: -2px;
+  }
+
+  .hero-metrics {
+    display: flex;
+    gap: 32px;
+  }
+
+  .hero-metric-item {
+    text-align: right;
+  }
+  .hero-metric-item .lbl {
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 4px;
+  }
+  .hero-metric-item .val {
+    font-size: 24px;
+    font-weight: 400;
+  }
+
+  /* Current Conditions Cards Grid */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-bottom: 32px;
+  }
+
+  .condition-card {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    height: 180px;
+  }
+
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .card-top .title {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 400;
+  }
+
+  .card-icon {
+    width: 22px;
+    height: 22px;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    fill: none;
+  }
+
+  .card-val {
+    font-size: 32px;
+    font-weight: 300;
+    letter-spacing: -1px;
+    margin-top: 8px;
+  }
+
+  .card-sub {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.65);
+    margin-top: 4px;
+  }
+
+  /* Section Title */
+  .section-title {
+    font-size: 22px;
+    font-weight: 300;
+    letter-spacing: -0.5px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* Timeline Strip */
+  .timeline-container {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    margin-bottom: 36px;
+    scrollbar-width: none;
+  }
+  .timeline-container::-webkit-scrollbar { display: none; }
+
+  .time-tile {
+    min-width: 110px;
+    padding: 20px 16px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .time-tile .t-hour {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 12px;
+  }
+
+  .time-tile .t-val {
+    font-size: 18px;
+    font-weight: 400;
+    margin: 8px 0;
+  }
+
+  .time-tile .t-sub {
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  /* Day Accordion Cards Section */
+  .accordion-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .day-accordion {
+    padding: 24px 28px;
+    cursor: pointer;
+  }
+
+  .day-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .day-info {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .day-name {
+    font-size: 18px;
+    font-weight: 400;
+    width: 120px;
+  }
+
+  .day-summary-text {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.75);
+  }
+
+  .day-ring-container {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  /* Circular Liquid Meter */
+  .ring-meter {
+    position: relative;
+    width: 48px;
+    height: 48px;
+  }
+
+  .ring-meter svg {
+    transform: rotate(-90deg);
+    width: 48px;
+    height: 48px;
+  }
+
+  .ring-meter circle {
+    fill: none;
+    stroke-width: 4;
+  }
+
+  .ring-bg { stroke: rgba(255, 255, 255, 0.15); }
+  .ring-fill {
+    stroke: var(--electric-blue);
+    stroke-dasharray: 126;
+    stroke-dashoffset: 126;
+    transition: stroke-dashoffset 1s ease;
+  }
+
+  .ring-val {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 500;
+  }
+
+  .day-body {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.6s cubic-bezier(0.16, 1, 0.3, 1), margin-top 0.4s ease;
+  }
+
+  .day-accordion.open .day-body {
+    max-height: 240px;
+    margin-top: 24px;
+  }
+
+  .chart-canvas {
+    width: 100%;
+    height: 160px;
+  }
+
+  /* Responsive Breakpoints */
+  @media (max-width: 900px) {
+    .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    .hero-section { flex-direction: column; align-items: flex-start; gap: 24px; }
+    .hero-metrics { text-align: left; }
+    .hero-metric-item { text-align: left; }
+  }
+  @media (max-width: 550px) {
+    .cards-grid { grid-template-columns: 1fr; }
+  }
 </style>
 </head>
 <body>
 
-  <header>
-    <div>
-      <h1>Phuket Weather Intelligence</h1>
-      <div class="subtitle" id="timestamp">Syncing live data...</div>
-    </div>
-    <div class="controls">
-      <select id="metricSel"></select>
-      <select id="stationSel"></select>
-    </div>
-  </header>
+  <!-- Sky Canvas Backdrop -->
+  <canvas id="skyCanvas"></canvas>
 
-  <div class="grid-container">
-    <table id="gridTable"></table>
+  <div class="app-container">
+    <header>
+      <div class="header-title">
+        <h1>Phuket, Thailand</h1>
+        <div class="meta" id="headerMeta">Syncing telemetry...</div>
+      </div>
+      <select id="stationPicker" class="station-picker"></select>
+    </header>
+
+    <!-- HERO DISPLAY -->
+    <div class="glass-card hero-section">
+      <div class="hero-main">
+        <div class="condition-tag" id="heroConditionTag">Atmospheric Scan</div>
+        <div class="hero-temp" id="heroVal">-- mm</div>
+      </div>
+      <div class="hero-metrics">
+        <div class="hero-metric-item">
+          <div class="lbl">Wind Flow</div>
+          <div class="val" id="heroWind">-- km/h</div>
+        </div>
+        <div class="hero-metric-item">
+          <div class="lbl">Visibility</div>
+          <div class="val" id="heroVis">-- km</div>
+        </div>
+        <div class="hero-metric-item">
+          <div class="lbl">Thunder Risk</div>
+          <div class="val" id="heroThunder">Low</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CURRENT CONDITIONS CARDS GRID -->
+    <div class="cards-grid">
+      <!-- Rain Card -->
+      <div class="glass-card condition-card">
+        <div class="card-top">
+          <span class="title">Precipitation</span>
+          <svg class="card-icon" viewBox="0 0 24 24"><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><path d="M8 16v4M12 18v4M16 16v4"/></svg>
+        </div>
+        <div>
+          <div class="card-val" id="cardRain">-- mm</div>
+          <div class="card-sub" id="cardRainSub">Current Reading</div>
+        </div>
+      </div>
+
+      <!-- Wind Card -->
+      <div class="glass-card condition-card">
+        <div class="card-top">
+          <span class="title">Wind Speed</span>
+          <svg class="card-icon" viewBox="0 0 24 24"><path d="M17.7 7.7a2.5 2.5 0 1 1 1.8 4.3H2M9.6 4.6A2 2 0 1 1 11 8H2M12.6 19.4A2 2 0 1 0 14 16H2"/></svg>
+        </div>
+        <div>
+          <div class="card-val" id="cardWind">-- km/h</div>
+          <div class="card-sub">Air Velocity</div>
+        </div>
+      </div>
+
+      <!-- Visibility Card -->
+      <div class="glass-card condition-card">
+        <div class="card-top">
+          <span class="title">Visibility</span>
+          <svg class="card-icon" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div>
+          <div class="card-val" id="cardVis">-- km</div>
+          <div class="card-sub" id="cardVisSub">Clarity Depth</div>
+        </div>
+      </div>
+
+      <!-- Thunder Risk Card -->
+      <div class="glass-card condition-card">
+        <div class="card-top">
+          <span class="title">Thunder Risk</span>
+          <svg class="card-icon" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <div>
+          <div class="card-val" id="cardThunder">Minimal</div>
+          <div class="card-sub">Electrical Activity</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FORECAST TIMELINE -->
+    <div class="section-title">Hourly Forecast</div>
+    <div class="timeline-container" id="timelineStrip"></div>
+
+    <!-- ACCORDION DAY CARDS -->
+    <div class="section-title">Historical & Daily Trends</div>
+    <div class="accordion-section" id="accordionSection"></div>
   </div>
 
 <script>
 const CONFIG = __CONFIG_JSON__;
-const metricSel = document.getElementById('metricSel');
-const stationSel = document.getElementById('stationSel');
-const table = document.getElementById('gridTable');
+const stationPicker = document.getElementById('stationPicker');
 let DATA = null;
 
-CONFIG.metrics.forEach(m => {
-  const opt = document.createElement('option');
-  opt.value = m.code; opt.textContent = m.label;
-  metricSel.appendChild(opt);
-});
-
+// Populate Station Options
 CONFIG.stations.forEach(s => {
   const opt = document.createElement('option');
   opt.value = s.code; opt.textContent = s.label_display;
   if (s.code === 'COMBINED') opt.selected = true;
-  stationSel.appendChild(opt);
+  stationPicker.appendChild(opt);
 });
 
+// Auto-Fetch live dataset from repository
 async function autoFetchServerData() {
   try {
     const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
@@ -463,10 +719,11 @@ async function autoFetchServerData() {
 
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
     DATA = buildDataFromRows(rows);
-    document.getElementById('timestamp').textContent = `Updated • ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
-    renderGrid();
+    
+    document.getElementById('headerMeta').textContent = `Updated Live • ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    renderApp();
   } catch (err) {
-    document.getElementById('timestamp').textContent = 'Displaying static cache';
+    document.getElementById('headerMeta').textContent = 'Displaying static atmospheric cache';
   }
 }
 
@@ -530,93 +787,247 @@ function buildDataFromRows(rows) {
   return { dates, times, payload };
 }
 
-function renderGrid() {
+/* ------------------------------------------------------------------
+   PARTICLE BACKDROP CANVAS (Sky Engine)
+------------------------------------------------------------------ */
+let skyAnimationId;
+function initSkyEngine(rainAmount) {
+  const canvas = document.getElementById('skyCanvas');
+  const ctx = canvas.getContext('2d');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  cancelAnimationFrame(skyAnimationId);
+
+  const particles = [];
+  const count = Math.min(Math.floor(rainAmount * 30) + 20, 300);
+
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      len: Math.random() * 20 + 10,
+      speed: Math.random() * 10 + 6 + (rainAmount > 10 ? 8 : 0)
+    });
+  }
+
+  let flash = 0;
+
+  function renderSky() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Sky Background Gradient
+    const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    if (rainAmount > 15) {
+      bgGrad.addColorStop(0, '#0F172A');
+      bgGrad.addColorStop(1, '#1E293B');
+    } else if (rainAmount > 2) {
+      bgGrad.addColorStop(0, '#102A54');
+      bgGrad.addColorStop(1, '#1E3A8A');
+    } else {
+      bgGrad.addColorStop(0, '#102A54');
+      bgGrad.addColorStop(1, '#1D4ED8');
+    }
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Lightning Trigger for Severe Rain (>15mm)
+    if (rainAmount > 15 && Math.random() < 0.006) flash = 0.8;
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(255, 244, 198, ${flash})`;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      flash -= 0.04;
+    }
+
+    // Rain Particle Rendering
+    if (rainAmount > 0) {
+      ctx.strokeStyle = 'rgba(74, 144, 255, 0.45)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      particles.forEach(p => {
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x - 2, p.y + p.len);
+        p.y += p.speed;
+        p.x -= 0.8;
+        if (p.y > canvas.height) {
+          p.y = -p.len;
+          p.x = Math.random() * canvas.width;
+        }
+      });
+      ctx.stroke();
+    }
+
+    skyAnimationId = requestAnimationFrame(renderSky);
+  }
+  renderSky();
+}
+
+/* ------------------------------------------------------------------
+   MAIN APP RENDERER
+------------------------------------------------------------------ */
+function renderApp() {
   if (!DATA) return;
 
-  const metric = metricSel.value;
-  const station = stationSel.value;
-  const combo = DATA.payload[metric][station];
-  const grid = combo.grid, summary = combo.summary;
+  const station = stationPicker.value;
+  const rainData = DATA.payload.Rain[station];
+  const windData = DATA.payload.Wind[station];
+  const visData = DATA.payload.Vis[station];
 
-  table.innerHTML = '';
+  const latestRain = rainData.grid.flat().filter(v => v !== null).pop() || 0;
+  const latestWind = windData.grid.flat().filter(v => v !== null).pop() || 0;
+  const latestVis = visData.grid.flat().filter(v => v !== null).pop() || 10;
 
-  // Header Row
-  const thead = document.createElement('tr');
-  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'datecol'}));
-  DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
-  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Summary'}));
-  table.appendChild(thead);
+  // Hero Display Updates
+  document.getElementById('heroVal').textContent = `${latestRain} mm`;
+  document.getElementById('heroWind').textContent = `${latestWind} km/h`;
+  document.getElementById('heroVis').textContent = `${latestVis} km`;
+  
+  const thunderRisk = latestRain > 15 ? 'High' : latestRain > 5 ? 'Moderate' : 'Low';
+  document.getElementById('heroThunder').textContent = thunderRisk;
 
-  // Data Rows
+  document.getElementById('heroConditionTag').textContent = 
+    latestRain > 15 ? "Severe Monsoon Stream" :
+    latestRain > 2  ? "Active Rainfall" : "Clear Sky State";
+
+  // Cards Grid Updates
+  document.getElementById('cardRain').textContent = `${latestRain} mm`;
+  document.getElementById('cardWind').textContent = `${latestWind} km/h`;
+  document.getElementById('cardVis').textContent = `${latestVis} km`;
+  document.getElementById('cardThunder').textContent = thunderRisk;
+
+  document.getElementById('cardVisSub').textContent = 
+    latestVis < 5 ? "Hazy Atmosphere" : "Clear Horizon";
+
+  initSkyEngine(latestRain);
+
+  // Render Forecast Timeline Tiles
+  const timelineStrip = document.getElementById('timelineStrip');
+  timelineStrip.innerHTML = '';
+
+  const lastDayIndex = DATA.dates.length - 1;
+  const hourlyTimes = DATA.times;
+  const hourlyRain = rainData.grid[lastDayIndex] || [];
+  const hourlyWind = windData.grid[lastDayIndex] || [];
+
+  hourlyTimes.forEach((t, idx) => {
+    const rVal = hourlyRain[idx] !== null ? hourlyRain[idx] : 0;
+    const wVal = hourlyWind[idx] !== null ? hourlyWind[idx] : 0;
+
+    const tile = document.createElement('div');
+    tile.className = 'glass-card time-tile';
+    tile.innerHTML = `
+      <div class="t-hour">${t}</div>
+      <svg class="card-icon" style="margin: 0 auto;" viewBox="0 0 24 24">
+        <path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/><path d="M8 16v4M12 18v4M16 16v4"/>
+      </svg>
+      <div class="t-val">${rVal} mm</div>
+      <div class="t-sub">${wVal} km/h</div>
+    `;
+    timelineStrip.appendChild(tile);
+  });
+
+  // Render Accordion Day Cards
+  const accordionSection = document.getElementById('accordionSection');
+  accordionSection.innerHTML = '';
+
   DATA.dates.forEach((d, i) => {
-    const tr = document.createElement('tr');
+    const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
+    const fillPercent = Math.min(100, (totalRain / CONFIG.rainfall_cap) * 100);
+    const strokeOffset = 126 - (126 * fillPercent) / 100;
 
-    const dateTd = document.createElement('td');
-    dateTd.textContent = d; dateTd.className = 'datecol';
-    tr.appendChild(dateTd);
-
-    grid[i].forEach(v => {
-      const td = document.createElement('td');
-      const wrapper = document.createElement('div');
-      wrapper.className = 'cell-wrapper';
-
-      if (metric === 'Rain') {
-        if (v !== null && v > 0) {
-          const fillRatio = Math.min(v, CONFIG.rainfall_cap) / CONFIG.rainfall_cap;
-          const wave = document.createElement('div');
-          wave.className = 'wave-bg';
-          wave.style.height = (fillRatio * 100) + '%';
-          wrapper.appendChild(wave);
-        }
-        const valSpan = document.createElement('span');
-        valSpan.className = 'cell-val' + (v === null ? ' empty-val' : '');
-        valSpan.textContent = v === null ? '-' : v;
-        wrapper.appendChild(valSpan);
-
-      } else if (metric === 'Wind') {
-        if (v !== null && v > 0) {
-          const spinSpeed = Math.max(0.2, 3 - (v / 10));
-          wrapper.innerHTML = `
-            <svg class="wind-icon" style="animation-duration: ${spinSpeed}s" viewBox="0 0 24 24">
-              <path d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4C13.2,4 14.18,4.86 14.36,6C13.5,6 12.7,6.36 12.12,6.94C11.54,7.5 11.18,8.3 11.18,9.18C10.3,9.18 9.5,9.54 8.92,10.12C8.34,10.7 8,11.5 8,12.38C8,13.56 8.86,14.54 10,14.72C10,15.58 10.36,16.38 10.94,16.96C11.5,17.54 12.3,17.9 13.18,17.9C14.36,17.9 15.34,17.04 15.52,15.88C16.4,15.88 17.2,15.5 17.78,14.94C18.36,14.36 18.72,13.56 18.72,12.68C18.72,11.5 17.86,10.5 16.7,10.34C16.7,9.46 16.34,8.66 15.76,8.08C15.18,7.5 14.38,7.14 13.5,7.14C13.5,5.96 12.64,5 11.5,5.18C11.66,4.5 12,4 12,4Z"/>
+    const card = document.createElement('div');
+    card.className = 'glass-card day-accordion';
+    card.innerHTML = `
+      <div class="day-header">
+        <div class="day-info">
+          <div class="day-name">${d}</div>
+          <div class="day-summary-text">${totalRain > 10 ? 'Heavy Precipitation' : totalRain > 0 ? 'Light Drizzle' : 'Clear Day'}</div>
+        </div>
+        <div class="day-ring-container">
+          <div class="ring-meter">
+            <svg>
+              <circle class="ring-bg" cx="24" cy="24" r="20"/>
+              <circle class="ring-fill" cx="24" cy="24" r="20" style="stroke-dashoffset: ${strokeOffset};"/>
             </svg>
-            <span class="cell-val">${v}</span>`;
-        } else {
-          wrapper.innerHTML = `<span class="cell-val ${v === null ? 'empty-val' : ''}">${v === null ? '-' : v}</span>`;
-        }
+            <div class="ring-val">${totalRain}</div>
+          </div>
+        </div>
+      </div>
+      <div class="day-body">
+        <canvas class="chart-canvas" id="chart-${i}"></canvas>
+      </div>
+    `;
 
-      } else if (metric === 'Vis') {
-        if (v !== null) {
-          if (v < 10) {
-            const fog = document.createElement('div');
-            fog.className = 'fog-layer';
-            fog.style.setProperty('--fog-blur', `${Math.max(1, (10 - v) * 0.8)}px`);
-            wrapper.appendChild(fog);
-          }
-          const valSpan = document.createElement('span');
-          valSpan.className = 'cell-val';
-          valSpan.textContent = v;
-          wrapper.appendChild(valSpan);
-        } else {
-          wrapper.innerHTML = `<span class="cell-val empty-val">-</span>`;
-        }
+    card.addEventListener('click', () => {
+      card.classList.toggle('open');
+      if (card.classList.contains('open')) {
+        renderDayChart(`chart-${i}`, DATA.times, rainData.grid[i]);
       }
-
-      td.appendChild(wrapper);
-      tr.appendChild(td);
     });
 
-    const sumTd = document.createElement('td');
-    sumTd.className = 'summary';
-    sumTd.textContent = summary[i] === null ? '-' : summary[i];
-    tr.appendChild(sumTd);
-
-    table.appendChild(tr);
+    accordionSection.appendChild(card);
   });
 }
 
-metricSel.addEventListener('change', renderGrid);
-stationSel.addEventListener('change', renderGrid);
+/* Apple-Style Smooth Curved Area Chart */
+function renderDayChart(canvasId, times, values) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+
+  const padding = 24;
+  const w = canvas.width - padding * 2;
+  const h = canvas.height - padding * 2;
+
+  const validVals = values.filter(v => v !== null);
+  const maxVal = Math.max(...validVals, 8);
+
+  const points = values.map((v, idx) => {
+    const val = v !== null ? v : 0;
+    const x = padding + (idx / (values.length - 1)) * w;
+    const y = canvas.height - padding - (val / maxVal) * h;
+    return { x, y };
+  });
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Gradient Fill
+  const fillGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  fillGrad.addColorStop(0, 'rgba(45, 125, 255, 0.4)');
+  fillGrad.addColorStop(1, 'rgba(45, 125, 255, 0.0)');
+
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 0; i < points.length - 1; i++) {
+    const xc = (points[i].x + points[i + 1].x) / 2;
+    const yc = (points[i].y + points[i + 1].y) / 2;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+  }
+  ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
+  ctx.lineTo(points[points.length - 1].x, canvas.height - padding);
+  ctx.lineTo(points[0].x, canvas.height - padding);
+  ctx.closePath();
+  ctx.fillStyle = fillGrad;
+  ctx.fill();
+
+  // Curve Line
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
+  for (let i = 0; i < points.length - 1; i++) {
+    const xc = (points[i].x + points[i + 1].x) / 2;
+    const yc = (points[i].y + points[i + 1].y) / 2;
+    ctx.quadraticCurveTo(points[i].x, points[i].y, xc, yc);
+  }
+  ctx.strokeStyle = '#2D7DFF';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+}
+
+stationPicker.addEventListener('change', renderApp);
+window.addEventListener('resize', renderApp);
 window.addEventListener('DOMContentLoaded', autoFetchServerData);
 </script>
 </body>
@@ -636,7 +1047,7 @@ def run_cycle():
     print(f"Excel Data sheet updated: +{added} new row(s), {total} total.")
 
     generate_html_dashboard(HTML_PATH)
-    print(f"Atmospheric HTML dashboard generated at {HTML_PATH}")
+    print(f"Apple Weather UI HTML generated at {HTML_PATH}")
 
 def main():
     parser = argparse.ArgumentParser()
