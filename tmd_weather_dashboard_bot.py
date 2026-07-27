@@ -1,8 +1,9 @@
 """
-TMD Phuket Weather -> raw Excel log + dynamic HTML dashboard (single script).
+TMD Phuket Weather -> raw Excel log + immersive Apple-Weather-style HTML dashboard.
 
-Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. All dynamic/interactive views live in
-Phuket_Weather_Dashboard.html, which automatically fetches the xlsx file directly over HTTP(S) when opened.
+Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. All dynamic/interactive/visual experience
+lives in Phuket_Weather_Dashboard.html, which fetches the xlsx file directly over HTTP(S)
+when opened and renders an atmospheric, glassmorphic monitoring interface.
 """
 
 import argparse
@@ -241,507 +242,622 @@ def generate_html_dashboard(html_path=HTML_PATH):
     html_path.parent.mkdir(parents=True, exist_ok=True)
     html_path.write_text(html, encoding="utf-8")
 
-_HTML_TEMPLATE = """<!DOCTYPE html>
+_HTML_TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Phuket Weather Dashboard</title>
+<title>Phuket Atmosphere</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0b0f19;
-    --card-bg: rgba(22, 31, 49, 0.75);
-    --border: rgba(255, 255, 255, 0.08);
-    --text: #f3f4f6;
-    --text-muted: #9ca3af;
-    --accent: #3b82f6;
-    --summary-bg: rgba(59, 130, 246, 0.12);
+  :root{
+    --primary:#3A6FF7;
+    --primary-soft:rgba(58,111,247,0.12);
+    --cloud-gray:#E8EDF3;
+    --bg:#F8FAFC;
+    --card-bg:rgba(255,255,255,0.62);
+    --card-border:rgba(16,24,40,0.06);
+    --text:#101418;
+    --text-muted:rgba(16,20,24,0.52);
+    --success:#1FA971;
+    --warning:#F59E0B;
+    --danger:#EF4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text","Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    min-height:100vh;
+  }
+  .app{
+    max-width:1180px;
+    margin:0 auto;
+    padding:36px 28px 80px;
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    font-family: 'Plus Jakarta Sans', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    padding: 28px;
-    min-height: 100vh;
-    background-image: 
-      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
-      radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.1) 0px, transparent 50%);
+  /* ---------------- Top bar ---------------- */
+  .topbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    flex-wrap:wrap;
+    gap:20px;
+    margin-bottom:28px;
+  }
+  .eyebrow{
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:1.2px;
+    text-transform:uppercase;
+    color:var(--primary);
+    margin-bottom:6px;
+  }
+  .location-block h1{
+    font-size:34px;
+    font-weight:650;
+    letter-spacing:-0.5px;
+    margin-bottom:6px;
+  }
+  .meta-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    font-size:14px;
+    color:var(--text-muted);
+    font-weight:500;
+  }
+  .meta-row .dot{opacity:0.4;}
+
+  .station-switch{
+    display:flex;
+    background:var(--cloud-gray);
+    border-radius:999px;
+    padding:4px;
+    gap:2px;
+  }
+  .station-switch button{
+    border:none;
+    background:transparent;
+    padding:9px 18px;
+    border-radius:999px;
+    font-size:13px;
+    font-weight:600;
+    color:var(--text-muted);
+    cursor:pointer;
+    transition:background 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
+    font-family:inherit;
+  }
+  .station-switch button.active{
+    background:#fff;
+    color:var(--text);
+    box-shadow:0 2px 10px rgba(16,24,40,0.10);
   }
 
-  header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 24px;
-    flex-wrap: wrap;
-    gap: 16px;
+  /* ---------------- Hero rain card ---------------- */
+  .hero-card{
+    position:relative;
+    height:400px;
+    border-radius:28px;
+    overflow:hidden;
+    box-shadow:0 24px 48px rgba(16,24,40,0.10);
+    background:#dfe6ee;
+  }
+  #rainCanvas{
+    position:absolute;
+    inset:0;
+    width:100%;
+    height:100%;
+    display:block;
+  }
+  .hero-card .lightning-flash{
+    position:absolute;
+    inset:0;
+    background:#ffffff;
+    opacity:0;
+    pointer-events:none;
+    transition:opacity 0.08s ease-out;
+  }
+  .glass-readout{
+    position:absolute;
+    left:26px;
+    bottom:26px;
+    padding:22px 26px;
+    border-radius:22px;
+    background:rgba(255,255,255,0.55);
+    backdrop-filter:blur(24px) saturate(180%);
+    -webkit-backdrop-filter:blur(24px) saturate(180%);
+    border:1px solid rgba(255,255,255,0.5);
+    box-shadow:0 8px 30px rgba(16,24,40,0.12);
+    min-width:220px;
+  }
+  .glass-readout .label{
+    font-size:13px;
+    font-weight:600;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:0.6px;
+    margin-bottom:6px;
+  }
+  .glass-readout .value{
+    font-size:40px;
+    font-weight:650;
+    letter-spacing:-1px;
+    line-height:1;
+  }
+  .glass-readout .value .unit{
+    font-size:16px;
+    font-weight:600;
+    color:var(--text-muted);
+    margin-left:6px;
+  }
+  .glass-readout .descriptor{
+    margin-top:8px;
+    font-size:14px;
+    font-weight:550;
+    color:var(--text);
+    opacity:0.85;
   }
 
-  h1 {
-    font-size: 24px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+  /* ---------------- Row cards ---------------- */
+  .row-cards{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:22px;
+    margin-top:22px;
+  }
+  .glass-card{
+    position:relative;
+    height:260px;
+    border-radius:24px;
+    overflow:hidden;
+    box-shadow:0 18px 36px rgba(16,24,40,0.08);
+  }
+  .wind-card{background:#eef1f6;}
+  #windCanvas{position:absolute;inset:0;width:100%;height:100%;display:block;}
+
+  .vis-card{background:#eaf1f7;}
+  .horizon-scene{position:absolute;inset:0;overflow:hidden;}
+  .horizon-scene .sky{
+    position:absolute;inset:0;
+    background:linear-gradient(180deg,#cfe0ef 0%,#eef4f9 60%,#f8fbfd 100%);
+  }
+  .mountain{
+    position:absolute;
+    left:-10%;
+    right:-10%;
+    bottom:0;
+    transition:opacity 0.6s ease, filter 0.6s ease, transform 0.6s ease;
+  }
+  .layer-3{
+    height:55%;
+    background:#aebdd0;
+    clip-path:polygon(0% 100%, 0% 60%, 12% 40%, 26% 55%, 40% 30%, 55% 52%, 68% 25%, 82% 48%, 100% 35%, 100% 100%);
+    opacity:0.55;
+  }
+  .layer-2{
+    height:42%;
+    background:#8fa2ba;
+    clip-path:polygon(0% 100%, 0% 68%, 15% 45%, 30% 62%, 46% 38%, 60% 60%, 75% 34%, 90% 58%, 100% 46%, 100% 100%);
+    opacity:0.72;
+  }
+  .layer-1{
+    height:28%;
+    background:#5f7592;
+    clip-path:polygon(0% 100%, 0% 72%, 18% 50%, 34% 68%, 50% 46%, 66% 66%, 82% 42%, 100% 62%, 100% 100%);
+    opacity:0.92;
+  }
+  .fog-wall{
+    position:absolute;inset:0;
+    background:#ffffff;
+    opacity:0;
+    backdrop-filter:blur(0px);
+    -webkit-backdrop-filter:blur(0px);
+    transition:opacity 0.6s ease, backdrop-filter 0.6s ease;
+    pointer-events:none;
   }
 
-  #fileStatus {
-    font-size: 13px;
-    color: var(--text-muted);
-    background: rgba(255, 255, 255, 0.04);
-    padding: 6px 14px;
-    border-radius: 20px;
-    border: 1px solid var(--border);
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
+  .card-readout{
+    position:absolute;
+    left:20px;
+    bottom:20px;
+    padding:16px 20px;
+    border-radius:18px;
+    background:rgba(255,255,255,0.55);
+    backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    border:1px solid rgba(255,255,255,0.5);
+    box-shadow:0 6px 22px rgba(16,24,40,0.10);
+    min-width:190px;
   }
-  #fileStatus.ok { color: #10b981; border-color: rgba(16, 185, 129, 0.2); }
-  #fileStatus.error { color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
+  .card-readout .label{
+    font-size:12px;font-weight:600;color:var(--text-muted);
+    text-transform:uppercase;letter-spacing:0.6px;margin-bottom:4px;
+  }
+  .card-readout .value{font-size:28px;font-weight:650;letter-spacing:-0.5px;line-height:1;}
+  .card-readout .value .unit{font-size:13px;font-weight:600;color:var(--text-muted);margin-left:5px;}
+  .card-readout .descriptor{margin-top:6px;font-size:13px;font-weight:550;color:var(--text);opacity:0.85;}
 
-  .controls-bar {
-    display: flex;
-    gap: 20px;
-    background: var(--card-bg);
-    padding: 16px 20px;
-    border-radius: 14px;
-    border: 1px solid var(--border);
-    backdrop-filter: blur(12px);
-    margin-bottom: 20px;
-    align-items: center;
-    flex-wrap: wrap;
+  /* ---------------- Trends ---------------- */
+  .trends{margin-top:44px;}
+  .trends h2{
+    font-size:20px;font-weight:650;letter-spacing:-0.3px;margin-bottom:18px;
   }
-
-  .control-group {
-    display: flex;
-    align-items: center;
-    gap: 10px;
+  .trend-grid{
+    display:grid;
+    grid-template-columns:repeat(3, 1fr);
+    gap:20px;
   }
-  .control-group label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+  .trend-card{
+    position:relative;
+    background:var(--card-bg);
+    backdrop-filter:blur(18px) saturate(160%);
+    -webkit-backdrop-filter:blur(18px) saturate(160%);
+    border:1px solid var(--card-border);
+    border-radius:20px;
+    padding:18px 20px 12px;
+    box-shadow:0 10px 26px rgba(16,24,40,0.06);
   }
-
-  select {
-    background: #111827;
-    color: var(--text);
-    border: 1px solid var(--border);
-    padding: 8px 14px;
-    border-radius: 8px;
-    font-size: 14px;
-    font-family: inherit;
-    outline: none;
-    cursor: pointer;
-    transition: all 0.2s;
+  .trend-card .t-head{
+    display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;
   }
-  select:hover { border-color: var(--accent); }
-
-  .wrap {
-    background: var(--card-bg);
-    border-radius: 16px;
-    border: 1px solid var(--border);
-    backdrop-filter: blur(12px);
-    overflow: auto;
-    max-height: 72vh;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
-  }
-
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    text-align: center;
+  .trend-card .t-title{font-size:14px;font-weight:650;color:var(--text);}
+  .trend-card .t-latest{font-size:13px;font-weight:600;color:var(--text-muted);}
+  .trend-card canvas{width:100%;height:130px;display:block;}
+  .trend-tooltip{
+    position:absolute;
+    top:14px;
+    right:16px;
+    font-size:12px;
+    font-weight:600;
+    padding:4px 10px;
+    border-radius:8px;
+    background:rgba(16,24,40,0.85);
+    color:#fff;
+    opacity:0;
+    transform:translateY(-4px);
+    transition:opacity 0.15s ease;
+    pointer-events:none;
   }
 
-  th, td {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    border-right: 1px solid var(--border);
-    min-width: 68px;
+  .file-status{
+    position:fixed;
+    right:22px;
+    bottom:16px;
+    font-size:12px;
+    color:var(--text-muted);
+    background:rgba(255,255,255,0.7);
+    backdrop-filter:blur(10px);
+    padding:6px 14px;
+    border-radius:999px;
+    border:1px solid var(--card-border);
   }
+  .file-status.ok{color:var(--success);}
+  .file-status.error{color:var(--danger);}
 
-  th {
-    background: #111827;
-    color: var(--text-muted);
-    font-weight: 600;
-    position: sticky;
-    top: 0;
-    z-index: 10;
+  @media (max-width:820px){
+    .row-cards{grid-template-columns:1fr;}
+    .trend-grid{grid-template-columns:1fr;}
+    .hero-card{height:340px;}
   }
-
-  td.datecol, th.datecol {
-    position: sticky;
-    left: 0;
-    background: #111827;
-    z-index: 11;
-    font-weight: 600;
-    text-align: left;
-    min-width: 110px;
-    color: var(--text);
-  }
-
-  td.summary {
-    background: var(--summary-bg);
-    font-weight: 700;
-    color: #60a5fa;
-  }
-
-  /* ---------------------------------------------------
-     METRIC VISUALIZATIONS
-  --------------------------------------------------- */
-
-  /* 1. Rainfall Liquid Wave Container */
-  td.rain-cell {
-    position: relative;
-    height: 64px;
-    padding: 0;
-    vertical-align: bottom;
-    overflow: hidden;
-    background: rgba(15, 23, 42, 0.6);
-  }
-
-  .wave-bucket {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
-    transition: height 0.4s ease-out;
-  }
-
-  /* Wave Animation effect */
-  .wave-bucket::before {
-    content: "";
-    position: absolute;
-    top: -8px; left: 0; width: 200%; height: 12px;
-    background: repeating-linear-gradient(90deg, rgba(255,255,255,0.4) 0px, transparent 12px, rgba(255,255,255,0.4) 24px);
-    animation: waveMove 2s infinite linear;
-  }
-
-  @keyframes waveMove {
-    0% { transform: translateX(0); }
-    100% { transform: translateX(-50%); }
-  }
-
-  td.rain-cell .val {
-    position: relative;
-    z-index: 2;
-    font-weight: 700;
-    display: block;
-    line-height: 64px;
-    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
-  }
-
-  /* 2. Wind Speed Fan Animation */
-  td.wind-cell {
-    height: 64px;
-    vertical-align: middle;
-  }
-  .wind-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-  }
-  .fan-icon {
-    width: 18px;
-    height: 18px;
-    fill: #38bdf8;
-    display: inline-block;
-    animation: spin linear infinite;
-  }
-  @keyframes spin {
-    100% { transform: rotate(360deg); }
-  }
-
-  /* 3. Frost Visibility Effect */
-  td.vis-cell {
-    height: 64px;
-    vertical-align: middle;
-    position: relative;
-    overflow: hidden;
-  }
-  .frost-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(255, 255, 255, 0.25);
-    backdrop-filter: blur(var(--blur-amount));
-    pointer-events: none;
-  }
-
-  .empty { color: rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
+  <div class="app">
+    <header class="topbar">
+      <div class="location-block">
+        <div class="eyebrow">Live Atmospheric Monitoring</div>
+        <h1 id="locationName">Phuket</h1>
+        <div class="meta-row">
+          <span id="timestamp">—</span>
+          <span class="dot">•</span>
+          <span id="condition">Connecting to live data…</span>
+        </div>
+      </div>
+      <div class="station-switch" id="stationSwitch"></div>
+    </header>
 
-  <header>
-    <div>
-      <h1>Phuket Weather Dashboard</h1>
-    </div>
-    <div id="fileStatus">Initializing live data connection...</div>
-  </header>
+    <section class="hero-card" id="rainHero">
+      <canvas id="rainCanvas"></canvas>
+      <div class="lightning-flash" id="lightningFlash"></div>
+      <div class="glass-readout">
+        <div class="label">Rainfall</div>
+        <div class="value"><span id="rainValue">--</span><span class="unit">mm</span></div>
+        <div class="descriptor" id="rainDescriptor">Awaiting data</div>
+      </div>
+    </section>
 
-  <div class="controls-bar">
-    <div class="control-group">
-      <label for="metric">Metric</label>
-      <select id="metric"></select>
-    </div>
-    <div class="control-group">
-      <label for="station">Station</label>
-      <select id="station"></select>
-    </div>
+    <section class="row-cards">
+      <div class="glass-card wind-card" id="windCard">
+        <canvas id="windCanvas"></canvas>
+        <div class="card-readout">
+          <div class="label">Wind Speed</div>
+          <div class="value"><span id="windValue">--</span><span class="unit">km/h</span></div>
+          <div class="descriptor" id="windDescriptor">—</div>
+        </div>
+      </div>
+
+      <div class="glass-card vis-card" id="visCard">
+        <div class="horizon-scene">
+          <div class="sky"></div>
+          <div class="mountain layer-3" id="layer3"></div>
+          <div class="mountain layer-2" id="layer2"></div>
+          <div class="mountain layer-1" id="layer1"></div>
+          <div class="fog-wall" id="fogWall"></div>
+        </div>
+        <div class="card-readout">
+          <div class="label">Visibility</div>
+          <div class="value"><span id="visValue">--</span><span class="unit">km</span></div>
+          <div class="descriptor" id="visDescriptor">—</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="trends">
+      <h2>Historical Trends</h2>
+      <div class="trend-grid" id="trendGrid">
+        <div class="trend-card">
+          <div class="trend-tooltip" id="tipRain"></div>
+          <div class="t-head"><span class="t-title">Rainfall</span><span class="t-latest" id="latestRain">—</span></div>
+          <canvas id="chartRain"></canvas>
+        </div>
+        <div class="trend-card">
+          <div class="trend-tooltip" id="tipWind"></div>
+          <div class="t-head"><span class="t-title">Wind Speed</span><span class="t-latest" id="latestWind">—</span></div>
+          <canvas id="chartWind"></canvas>
+        </div>
+        <div class="trend-card">
+          <div class="trend-tooltip" id="tipVis"></div>
+          <div class="t-head"><span class="t-title">Visibility</span><span class="t-latest" id="latestVis">—</span></div>
+          <canvas id="chartVis"></canvas>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <div class="wrap"><table id="grid"></table></div>
+  <div id="fileStatus" class="file-status">Initializing…</div>
 
 <script>
 const CONFIG = __CONFIG_JSON__;
-const RAIN_CAP = CONFIG.rainfall_cap;
 
-const metricSel = document.getElementById('metric');
-const stationSel = document.getElementById('station');
-const statusEl = document.getElementById('fileStatus');
-const table = document.getElementById('grid');
-
-let DATA = null;
-
-CONFIG.metrics.forEach(m => {
-  const opt = document.createElement('option');
-  opt.value = m.code; opt.textContent = m.label;
-  metricSel.appendChild(opt);
-});
-
-CONFIG.stations.forEach(s => {
-  const opt = document.createElement('option');
-  opt.value = s.code; opt.textContent = s.label_display;
-  if (s.code === 'COMBINED') opt.selected = true;
-  stationSel.appendChild(opt);
-});
-
-function setStatus(msg, cls) {
-  statusEl.textContent = msg;
-  statusEl.className = cls || '';
+/* ============================================================
+   Classification tables
+============================================================ */
+const RAIN_LEVELS = [
+  { max:0,        key:'dry',      label:'Dry Conditions',        sub:'No rainfall detected',            particles:0,   speed:[0,0],   sky:['#cfd8e3','#eef2f6'] },
+  { max:5,        key:'light',    label:'Light Rain',            sub:'Sparse showers passing through',  particles:70,  speed:[2.2,3.6], sky:['#b7c5d7','#dee6ee'] },
+  { max:20,       key:'moderate', label:'Moderate Rain',         sub:'Steady rainfall over the area',   particles:170, speed:[4.5,7],   sky:['#8b9db6','#c1cad7'] },
+  { max:50,       key:'heavy',    label:'Heavy Rain',            sub:'Intense monsoon activity',        particles:320, speed:[8,12.5],  sky:['#54647c','#8994a6'] },
+  { max:Infinity, key:'extreme',  label:'Severe Thunderstorm',   sub:'Extreme rainfall — lightning risk', particles:460, speed:[13,19],  sky:['#1e2531','#454f60'] },
+];
+function classifyRain(mm){
+  const v = (mm===null||mm===undefined||isNaN(mm)) ? 0 : mm;
+  for (const l of RAIN_LEVELS) if (v<=l.max) return l;
+  return RAIN_LEVELS[RAIN_LEVELS.length-1];
 }
 
-async function autoFetchServerData() {
-  setStatus('Syncing live data...', '');
-  try {
-    const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const buffer = await res.arrayBuffer();
-    
-    const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
-    const sheet = wb.Sheets[CONFIG.data_sheet_name];
-    if (!sheet) throw new Error(`Sheet "${CONFIG.data_sheet_name}" missing`);
-
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
-    DATA = buildDataFromRows(rows);
-    setStatus(`Updated live: ${new Date().toLocaleTimeString()}`, 'ok');
-    render();
-  } catch (err) {
-    setStatus('Unable to load server dataset', 'error');
-  }
+const WIND_LEVELS = [
+  { max:10,       key:'calm',    label:'Calm Air',        particles:40,  speed:[0.4,0.8], amp:4 },
+  { max:25,       key:'breezy',  label:'Gentle Breeze',   particles:90,  speed:[1.0,1.8], amp:8 },
+  { max:40,       key:'windy',   label:'Strong Flow',     particles:150, speed:[2.0,3.2], amp:14 },
+  { max:Infinity, key:'gale',    label:'Turbulent Gale',  particles:220, speed:[3.4,4.8], amp:22 },
+];
+function classifyWind(v){
+  const s = (v===null||v===undefined||isNaN(v)) ? 0 : v;
+  for (const l of WIND_LEVELS) if (s<=l.max) return l;
+  return WIND_LEVELS[WIND_LEVELS.length-1];
 }
 
-function pad(n) { return n.toString().padStart(2, '0'); }
+const VIS_LEVELS = [
+  { min:10,   key:'excellent', label:'Clear Conditions',   fog:0.02, blur:0 },
+  { min:5,    key:'moderate',  label:'Slight Haze',        fog:0.28, blur:2 },
+  { min:2,    key:'poor',      label:'Reduced Visibility', fog:0.58, blur:6 },
+  { min:-1,   key:'verypoor',  label:'Dense Fog',          fog:0.86, blur:12 },
+];
+function classifyVisibility(v){
+  const s = (v===null||v===undefined||isNaN(v)) ? 0 : v;
+  for (const l of VIS_LEVELS) if (s>=l.min) return l;
+  return VIS_LEVELS[VIS_LEVELS.length-1];
+}
 
-function parseDateTime(v) {
-  if (v === null || v === undefined || v === '') return null;
+/* ============================================================
+   State
+============================================================ */
+let recordsByStation = {};
+let currentStation = 'COMBINED';
+
+/* ============================================================
+   Station switch UI
+============================================================ */
+const switchEl = document.getElementById('stationSwitch');
+CONFIG.stations.forEach(s=>{
+  const btn = document.createElement('button');
+  btn.textContent = s.label_display;
+  btn.dataset.code = s.code;
+  if (s.code === currentStation) btn.classList.add('active');
+  btn.addEventListener('click', ()=>{
+    currentStation = s.code;
+    document.querySelectorAll('.station-switch button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderAll();
+  });
+  switchEl.appendChild(btn);
+});
+
+function stationCfg(code){ return CONFIG.stations.find(s=>s.code===code); }
+
+/* ============================================================
+   Data loading
+============================================================ */
+function setStatus(msg, cls){
+  const el = document.getElementById('fileStatus');
+  el.textContent = msg;
+  el.className = 'file-status ' + (cls||'');
+}
+
+function parseDT(v){
+  if (v===null||v===undefined||v==='') return null;
   const d = (v instanceof Date) ? v : new Date(v);
   return isNaN(d.getTime()) ? null : d;
 }
+function numOrNull(v){
+  if (v===null||v===undefined||v==='') return null;
+  const n = Number(v);
+  return isNaN(n) ? null : n;
+}
 
-function buildDataFromRows(rows) {
-  const buckets = {};
-  const dateSet = new Set();
-  const timeSet = new Set();
-  const columns = CONFIG.metrics.map(m => m.column);
+async function loadData(){
+  setStatus('Syncing live data…');
+  try{
+    const res = await fetch(CONFIG.xlsx_filename, {cache:'no-cache'});
+    if (!res.ok) throw new Error('HTTP '+res.status);
+    const buf = await res.arrayBuffer();
+    const wb = XLSX.read(buf, {type:'array', cellDates:true});
+    const sheet = wb.Sheets[CONFIG.data_sheet_name];
+    if (!sheet) throw new Error('Sheet missing');
+    const rows = XLSX.utils.sheet_to_json(sheet, {defval:null});
 
-  rows.forEach(row => {
-    const dt = parseDateTime(row.DateTime);
-    const station = row.Station;
-    if (!dt || !station) return;
+    const byStation = {};
+    CONFIG.stations.forEach(s=> byStation[s.code] = []);
 
-    const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-    const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-    dateSet.add(dateStr); timeSet.add(timeStr);
-
-    buckets[station] = buckets[station] || {};
-    buckets[station][dateStr] = buckets[station][dateStr] || {};
-    const slot = buckets[station][dateStr][timeStr] =
-      buckets[station][dateStr][timeStr] || Object.fromEntries(columns.map(c => [c, []]));
-
-    columns.forEach(col => {
-      const v = row[col];
-      if (v !== null && v !== undefined && v !== '' && !isNaN(Number(v))) slot[col].push(Number(v));
-    });
-  });
-
-  const dates = Array.from(dateSet).sort();
-  const times = Array.from(timeSet).sort((a, b) => {
-    const [ah, am] = a.split(':').map(Number), [bh, bm] = b.split(':').map(Number);
-    return (ah * 60 + am) - (bh * 60 + bm);
-  });
-
-  const round2 = x => Math.round(x * 100) / 100;
-  const mean = arr => arr.length ? round2(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
-
-  const payload = {};
-  CONFIG.metrics.forEach(m => {
-    payload[m.code] = {};
-    CONFIG.stations.forEach(s => {
-      const stationLabel = s.label_raw;
-      const grid = dates.map(d => times.map(t => {
-        const slot = buckets[stationLabel] && buckets[stationLabel][d] && buckets[stationLabel][d][t];
-        return slot ? mean(slot[m.column]) : null;
-      }));
-      const summary = grid.map(rowVals => {
-        const present = rowVals.filter(v => v !== null);
-        if (!present.length) return null;
-        return m.code === 'Rain' ? round2(present.reduce((a, b) => a + b, 0)) : mean(present);
+    rows.forEach(row=>{
+      const dt = parseDT(row.DateTime);
+      if (!dt || !row.Station) return;
+      const cfg = CONFIG.stations.find(s=>s.label_raw === row.Station);
+      if (!cfg) return;
+      byStation[cfg.code].push({
+        dt,
+        Rain: numOrNull(row.Rainfall_mm),
+        Wind: numOrNull(row.WindSpeed),
+        Vis: numOrNull(row.LandVisibility),
       });
-      payload[m.code][s.code] = { grid, summary };
-    });
-  });
-
-  return { dates, times, payload };
-}
-
-function render() {
-  if (!DATA) return;
-
-  const metric = metricSel.value;
-  const station = stationSel.value;
-  const combo = DATA.payload[metric][station];
-  const grid = combo.grid, summary = combo.summary;
-
-  table.innerHTML = '';
-
-  const thead = document.createElement('tr');
-  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'datecol'}));
-  DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
-  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Summary'}));
-  table.appendChild(thead);
-
-  DATA.dates.forEach((d, i) => {
-    const tr = document.createElement('tr');
-    const dateTd = document.createElement('td');
-    dateTd.textContent = d; dateTd.className = 'datecol';
-    tr.appendChild(dateTd);
-
-    grid[i].forEach(v => {
-      const td = document.createElement('td');
-
-      if (metric === 'Rain') {
-        td.className = 'rain-cell';
-        if (v !== null && v > 0) {
-          const fillRatio = Math.min(v, RAIN_CAP) / RAIN_CAP;
-          const bucket = document.createElement('div');
-          bucket.className = 'wave-bucket';
-          bucket.style.height = (fillRatio * 100) + '%';
-          td.appendChild(bucket);
-        }
-        const span = document.createElement('span');
-        span.className = 'val';
-        span.textContent = v === null ? '' : v;
-        if (v === null) span.className += ' empty';
-        td.appendChild(span);
-
-      } else if (metric === 'Wind') {
-        td.className = 'wind-cell';
-        if (v !== null && v > 0) {
-          const spinDuration = Math.max(0.2, 3 - (v / 10)); // Speed scales fan animation
-          td.innerHTML = `
-            <div class="wind-container">
-              <svg class="fan-icon" style="animation-duration: ${spinDuration}s" viewBox="0 0 24 24">
-                <path d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4C13.2,4 14.18,4.86 14.36,6C13.5,6 12.7,6.36 12.12,6.94C11.54,7.5 11.18,8.3 11.18,9.18C10.3,9.18 9.5,9.54 8.92,10.12C8.34,10.7 8,11.5 8,12.38C8,13.56 8.86,14.54 10,14.72C10,15.58 10.36,16.38 10.94,16.96C11.5,17.54 12.3,17.9 13.18,17.9C14.36,17.9 15.34,17.04 15.52,15.88C16.4,15.88 17.2,15.5 17.78,14.94C18.36,14.36 18.72,13.56 18.72,12.68C18.72,11.5 17.86,10.5 16.7,10.34C16.7,9.46 16.34,8.66 15.76,8.08C15.18,7.5 14.38,7.14 13.5,7.14C13.5,5.96 12.64,5 11.5,5.18C11.66,4.5 12,4 12,4Z"/>
-              </svg>
-              <span>${v}</span>
-            </div>`;
-        } else {
-          td.textContent = v === null ? '' : v;
-          if (v === null) td.className += ' empty';
-        }
-
-      } else if (metric === 'Vis') {
-        td.className = 'vis-cell';
-        if (v !== null) {
-          // Low visibility creates heavier frost
-          if (v < 10) {
-            const blurAmount = Math.max(1, (10 - v) * 0.8);
-            const overlay = document.createElement('div');
-            overlay.className = 'frost-overlay';
-            overlay.style.setProperty('--blur-amount', `${blurAmount}px`);
-            td.appendChild(overlay);
-          }
-          const span = document.createElement('span');
-          span.style.position = 'relative';
-          span.style.zIndex = '2';
-          span.textContent = v;
-          td.appendChild(span);
-        } else {
-          td.className += ' empty';
-        }
-      }
-
-      tr.appendChild(td);
     });
 
-    const sumTd = document.createElement('td');
-    sumTd.className = 'summary';
-    sumTd.textContent = summary[i] === null ? '' : summary[i];
-    tr.appendChild(sumTd);
+    Object.keys(byStation).forEach(code=>{
+      byStation[code].sort((a,b)=>a.dt-b.dt);
+    });
 
-    table.appendChild(tr);
-  });
+    recordsByStation = byStation;
+    setStatus('Live • updated ' + new Date().toLocaleTimeString(), 'ok');
+    renderAll();
+  }catch(err){
+    setStatus('Unable to reach live dataset', 'error');
+  }
 }
 
-metricSel.addEventListener('change', render);
-stationSel.addEventListener('change', render);
+/* ============================================================
+   Formatting helpers
+============================================================ */
+function fmtDT(d){
+  if (!d) return '—';
+  const opts = {weekday:'short', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'};
+  return d.toLocaleString('en-GB', opts);
+}
+function fmt1(v){ return (v===null||v===undefined||isNaN(v)) ? '--' : v.toFixed(1); }
 
-window.addEventListener('DOMContentLoaded', autoFetchServerData);
-</script>
-</body>
-</html>
-"""
+function deriveCondition(rec){
+  if (!rec) return 'No data available';
+  const rl = classifyRain(rec.Rain);
+  if (rl.key !== 'dry') return rl.label + ' · ' + classifyWind(rec.Wind).label;
+  const vl = classifyVisibility(rec.Vis);
+  if (vl.key !== 'excellent') return vl.label;
+  return 'Clear & Calm';
+}
 
-# ----------------------------------------------------------------------------
-# Orchestration
-# ----------------------------------------------------------------------------
+/* ============================================================
+   RAIN HERO ANIMATION
+============================================================ */
+const rainCanvas = document.getElementById('rainCanvas');
+const rainCtx = rainCanvas.getContext('2d');
+const lightningFlash = document.getElementById('lightningFlash');
 
-def run_cycle():
-    print(f"[{datetime.now().isoformat()}] Fetching TMD feed...")
-    records = fetch_records()
-    print(f"Built {len(records)} row(s) (raw + combined) this cycle.")
+let rainParticles = [];
+const RAIN_MAX_PARTICLES = 500;
+for (let i=0;i<RAIN_MAX_PARTICLES;i++){
+  rainParticles.push({ x:Math.random(), y:Math.random(), len:10+Math.random()*18, phase:Math.random()*10 });
+}
 
-    added, total = update_excel(records)
-    print(f"Excel Data sheet updated: +{added} new row(s), {total} total.")
+let rainState = { level: RAIN_LEVELS[0], visualCount:0, flashAlpha:0, boltLife:0, boltPts:[] };
 
-    generate_html_dashboard(HTML_PATH)
-    print(f"HTML dashboard generated at {HTML_PATH}")
+function resizeCanvas(canvas){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  canvas.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+}
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--once", action="store_true", help="Run a single cycle and exit")
-    args = parser.parse_args()
+function setRainScene(mm){
+  const lvl = classifyRain(mm);
+  rainState.level = lvl;
+  document.getElementById('rainValue').textContent = (mm===null||mm===undefined) ? '--' : mm.toFixed(1);
+  document.getElementById('rainDescriptor').textContent = lvl.label + ' — ' + lvl.sub;
+}
 
-    if args.once:
-        run_cycle()
-        return
+function drawRainFrame(){
+  const w = rainCanvas.clientWidth, h = rainCanvas.clientHeight;
+  const lvl = rainState.level;
 
-    while True:
-        try:
-            run_cycle()
-        except Exception as e:
-            print(f"Error this cycle: {e}")
-        print(f"Sleeping {INTERVAL_HOURS} hour(s)...")
-        time.sleep(INTERVAL_HOURS * 3600)
+  // smooth particle count transition
+  rainState.visualCount += (lvl.particles - rainState.visualCount) * 0.04;
+  const count = Math.round(rainState.visualCount);
 
-if __name__ == "__main__":
-    main()
+  // sky gradient
+  const grad = rainCtx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0, lvl.sky[0]);
+  grad.addColorStop(1, lvl.sky[1]);
+  rainCtx.fillStyle = grad;
+  rainCtx.fillRect(0,0,w,h);
+
+  // soft cloud shading blobs (slow drifting)
+  const t = performance.now()*0.00006;
+  rainCtx.globalAlpha = 0.14;
+  for (let i=0;i<4;i++){
+    const cx = ((Math.sin(t+i*1.7)+1)/2) * w;
+    const cy = h*0.18 + i*22;
+    const r = 140 + i*30;
+    const cg = rainCtx.createRadialGradient(cx,cy,0,cx,cy,r);
+    cg.addColorStop(0, 'rgba(255,255,255,0.55)');
+    cg.addColorStop(1, 'rgba(255,255,255,0)');
+    rainCtx.fillStyle = cg;
+    rainCtx.beginPath();
+    rainCtx.arc(cx,cy,r,0,Math.PI*2);
+    rainCtx.fill();
+  }
+  rainCtx.globalAlpha = 1;
+
+  // rain streaks
+  if (count > 0){
+    const [minS,maxS] = lvl.speed;
+    rainCtx.strokeStyle = 'rgba(255,255,255,0.42)';
+    rainCtx.lineWidth = 1.1;
+    rainCtx.lineCap = 'round';
+    for (let i=0;i<count;i++){
+      const p = rainParticles[i];
+      const speed = minS + (maxS-minS) * ((Math.sin(p.phase)+1)/2);
+      p.y += (speed/h) * 0.9;
+      if (p.y > 1.05){ p.y = -0.05; p.x = Math.random(); }
+      const px = p.x*w, py = p.y*h;
+      rainCtx.beginPath();
+      rainCtx.moveTo(px, py);
+      rainCtx.lineTo(px-3, py-p.len);
+      rainCtx.stroke();
+    }
+  }
+
+  // mist accumulation for heavy/extreme
+  if (lvl.key==='heavy' || lvl.key==='extreme'){
+    const mg = rainCtx.createLinearGradient(0,h*0.75,0,h);
+    mg.addColorStop(0,'rgba(255,255,255,0)');
+    mg.addColorStop(1,'rgba(255,255,255,0.22)');
+    rainCtx.fillStyle = mg;
+    rainCtx.fillRect(0,h*0.7,w,h*0.3);
+  }
+
+  // lightning logic
+  if (lvl.key === 'extreme'){
+    if (rainState.boltLife<=0 && Math.random() < 0.008){
+      rainState.flashAlpha = 0.75;
+      rainState.boltLife = 6;
+      const pts = [];
