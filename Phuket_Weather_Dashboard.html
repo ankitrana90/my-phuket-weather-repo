@@ -2,66 +2,259 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Phuket Weather Dashboard</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root { --summary-bg: #FFF3E0; --overflow-color: #041C32; }
-  body { font-family: Segoe UI, Arial, sans-serif; margin: 24px; background: #fafafa; color: #222; }
-  h1 { font-size: 20px; margin-bottom: 4px; }
-  .subtitle { color: #666; margin-bottom: 16px; font-size: 13px; }
+  :root {
+    --bg: #0b0f19;
+    --card-bg: rgba(22, 31, 49, 0.75);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #f3f4f6;
+    --text-muted: #9ca3af;
+    --accent: #3b82f6;
+    --summary-bg: rgba(59, 130, 246, 0.12);
+  }
 
-  .loader { border: 2px dashed #90caf9; border-radius: 8px; padding: 16px 20px; margin-bottom: 18px;
-            background: #f4f9ff; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-  .loader.dragover { background: #e3f2fd; border-color: #1565C0; }
-  .loader button { padding: 8px 14px; font-size: 13px; border-radius: 6px; border: 1px solid #1565C0;
-                   background: #1565C0; color: #fff; cursor: pointer; }
-  .loader button:hover { background: #0d47a1; }
-  #fileStatus { font-size: 13px; color: #555; }
-  #fileStatus.error { color: #c62828; font-weight: 600; }
-  #fileStatus.ok { color: #2e7d32; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 28px;
+    min-height: 100vh;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.12) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(14, 165, 233, 0.1) 0px, transparent 50%);
+  }
 
-  .controls { display: flex; gap: 24px; margin-bottom: 16px; align-items: center; }
-  .controls label { font-weight: 600; margin-right: 8px; }
-  select { padding: 6px 10px; font-size: 14px; border-radius: 6px; border: 1px solid #ccc; }
-  table { border-collapse: collapse; font-size: 12px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-  th, td { border: 1px solid #ddd; padding: 4px 8px; text-align: center; min-width: 46px; }
-  th { background: #f0f0f0; position: sticky; top: 0; }
-  td.datecol, th.datecol { position: sticky; left: 0; background: #f0f0f0; font-weight: 600; text-align: left; min-width: 90px; }
-  td.summary { background: var(--summary-bg); font-weight: 600; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
 
-  /* Rainfall cells: fixed-height container with a bottom-anchored bar whose
-     height represents the value (capped), coloured light -> dark blue. */
-  td.rain-cell { position: relative; height: 56px; padding: 2px 4px; vertical-align: bottom; }
-  td.rain-cell .bar { position: absolute; left: 4px; right: 4px; bottom: 0; border-radius: 3px 3px 0 0; transition: height 0.15s; }
-  td.rain-cell .val { position: relative; z-index: 1; font-weight: 600; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
-  td.rain-cell.overflow .val { color: #fff; text-shadow: none; }
+  h1 {
+    font-size: 24px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
 
-  /* Wind Speed / Land Visibility cells: plain number, no colour or bar. */
-  td.plain-cell { height: 56px; vertical-align: middle; }
+  #fileStatus {
+    font-size: 13px;
+    color: var(--text-muted);
+    background: rgba(255, 255, 255, 0.04);
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #fileStatus.ok { color: #10b981; border-color: rgba(16, 185, 129, 0.2); }
+  #fileStatus.error { color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
 
-  .wrap { max-height: 70vh; overflow: auto; border-radius: 6px; }
-  .empty { color: #999; }
-  .legend { font-size: 12px; color: #555; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-  .legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 2px; vertical-align: middle; }
-  .placeholder { color: #888; font-size: 13px; padding: 20px; }
+  .controls-bar {
+    display: flex;
+    gap: 20px;
+    background: var(--card-bg);
+    padding: 16px 20px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    margin-bottom: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .control-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  select {
+    background: #111827;
+    color: var(--text);
+    border: 1px solid var(--border);
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  select:hover { border-color: var(--accent); }
+
+  .wrap {
+    background: var(--card-bg);
+    border-radius: 16px;
+    border: 1px solid var(--border);
+    backdrop-filter: blur(12px);
+    overflow: auto;
+    max-height: 72vh;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  th, td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    min-width: 68px;
+  }
+
+  th {
+    background: #111827;
+    color: var(--text-muted);
+    font-weight: 600;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  td.datecol, th.datecol {
+    position: sticky;
+    left: 0;
+    background: #111827;
+    z-index: 11;
+    font-weight: 600;
+    text-align: left;
+    min-width: 110px;
+    color: var(--text);
+  }
+
+  td.summary {
+    background: var(--summary-bg);
+    font-weight: 700;
+    color: #60a5fa;
+  }
+
+  /* ---------------------------------------------------
+     METRIC VISUALIZATIONS
+  --------------------------------------------------- */
+
+  /* 1. Rainfall Liquid Wave Container */
+  td.rain-cell {
+    position: relative;
+    height: 64px;
+    padding: 0;
+    vertical-align: bottom;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.6);
+  }
+
+  .wave-bucket {
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    background: linear-gradient(180deg, #3b82f6 0%, #1d4ed8 100%);
+    transition: height 0.4s ease-out;
+  }
+
+  /* Wave Animation effect */
+  .wave-bucket::before {
+    content: "";
+    position: absolute;
+    top: -8px; left: 0; width: 200%; height: 12px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,0.4) 0px, transparent 12px, rgba(255,255,255,0.4) 24px);
+    animation: waveMove 2s infinite linear;
+  }
+
+  @keyframes waveMove {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+
+  td.rain-cell .val {
+    position: relative;
+    z-index: 2;
+    font-weight: 700;
+    display: block;
+    line-height: 64px;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+
+  /* 2. Wind Speed Fan Animation */
+  td.wind-cell {
+    height: 64px;
+    vertical-align: middle;
+  }
+  .wind-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+  .fan-icon {
+    width: 18px;
+    height: 18px;
+    fill: #38bdf8;
+    display: inline-block;
+    animation: spin linear infinite;
+  }
+  @keyframes spin {
+    100% { transform: rotate(360deg); }
+  }
+
+  /* 3. Frost Visibility Effect */
+  td.vis-cell {
+    height: 64px;
+    vertical-align: middle;
+    position: relative;
+    overflow: hidden;
+  }
+  .frost-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.25);
+    backdrop-filter: blur(var(--blur-amount));
+    pointer-events: none;
+  }
+
+  .empty { color: rgba(255,255,255,0.2); }
 </style>
 </head>
 <body>
-  <h1>Phuket Weather Dashboard</h1>
-  <div class="subtitle">Reads Phuket_Weather.xlsx directly in your browser -- always shows the real, current raw data, never a baked-in snapshot.</div>
 
-  <div id="loader" class="loader">
-    <button id="refreshBtn">Refresh from Server</button>
-    <button id="pickBtn">Load Local File</button>
-    <span id="fileStatus">Loading latest data from the server...</span>
-    <input type="file" id="fileInput" accept=".xlsx" style="display:none">
+  <header>
+    <div>
+      <h1>Phuket Weather Dashboard</h1>
+    </div>
+    <div id="fileStatus">Initializing live data connection...</div>
+  </header>
+
+  <div class="controls-bar">
+    <div class="control-group">
+      <label for="metric">Metric</label>
+      <select id="metric"></select>
+    </div>
+    <div class="control-group">
+      <label for="station">Station</label>
+      <select id="station"></select>
+    </div>
   </div>
 
-  <div class="controls">
-    <div><label for="metric">Metric:</label><select id="metric"></select></div>
-    <div><label for="station">Station:</label><select id="station"></select></div>
-  </div>
-  <div id="legend" class="legend"></div>
   <div class="wrap"><table id="grid"></table></div>
 
 <script>
@@ -70,22 +263,17 @@ const RAIN_CAP = CONFIG.rainfall_cap;
 
 const metricSel = document.getElementById('metric');
 const stationSel = document.getElementById('station');
-const legendEl = document.getElementById('legend');
-const fileInput = document.getElementById('fileInput');
-const pickBtn = document.getElementById('pickBtn');
-const loaderEl = document.getElementById('loader');
 const statusEl = document.getElementById('fileStatus');
 const table = document.getElementById('grid');
 
 let DATA = null;
 
-// Dropdowns come from CONFIG (fixed metadata) and are ready immediately,
-// before any file is loaded.
 CONFIG.metrics.forEach(m => {
   const opt = document.createElement('option');
   opt.value = m.code; opt.textContent = m.label;
   metricSel.appendChild(opt);
 });
+
 CONFIG.stations.forEach(s => {
   const opt = document.createElement('option');
   opt.value = s.code; opt.textContent = s.label_display;
@@ -93,47 +281,29 @@ CONFIG.stations.forEach(s => {
   stationSel.appendChild(opt);
 });
 
-pickBtn.addEventListener('click', () => fileInput.click());
-fileInput.addEventListener('change', e => {
-  if (e.target.files && e.target.files[0]) loadFile(e.target.files[0]);
-});
-['dragover', 'dragenter'].forEach(evt => loaderEl.addEventListener(evt, e => {
-  e.preventDefault(); loaderEl.classList.add('dragover');
-}));
-['dragleave', 'drop'].forEach(evt => loaderEl.addEventListener(evt, e => {
-  e.preventDefault(); loaderEl.classList.remove('dragover');
-}));
-loaderEl.addEventListener('drop', e => {
-  if (e.dataTransfer.files && e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
-});
-
 function setStatus(msg, cls) {
   statusEl.textContent = msg;
   statusEl.className = cls || '';
 }
 
-function loadFile(file) {
-  setStatus('Reading ' + file.name + '...', '');
-  const reader = new FileReader();
-  reader.onload = evt => {
-    try {
-      const wb = XLSX.read(evt.target.result, { type: 'array', cellDates: true });
-      const sheet = wb.Sheets[CONFIG.data_sheet_name];
-      if (!sheet) {
-        setStatus(`Couldn't find a "${CONFIG.data_sheet_name}" sheet in ${file.name}.`, 'error');
-        return;
-      }
-      const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
-      DATA = buildDataFromRows(rows);
-      const now = new Date();
-      setStatus(`Loaded ${file.name} (${rows.length} row(s)) at ${now.toLocaleTimeString()}.`, 'ok');
-      render();
-    } catch (err) {
-      setStatus('Error reading file: ' + err.message, 'error');
-    }
-  };
-  reader.onerror = () => setStatus('Could not read the file.', 'error');
-  reader.readAsArrayBuffer(file);
+async function autoFetchServerData() {
+  setStatus('Syncing live data...', '');
+  try {
+    const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = await res.arrayBuffer();
+    
+    const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const sheet = wb.Sheets[CONFIG.data_sheet_name];
+    if (!sheet) throw new Error(`Sheet "${CONFIG.data_sheet_name}" missing`);
+
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    DATA = buildDataFromRows(rows);
+    setStatus(`Updated live: ${new Date().toLocaleTimeString()}`, 'ok');
+    render();
+  } catch (err) {
+    setStatus('Unable to load server dataset', 'error');
+  }
 }
 
 function pad(n) { return n.toString().padStart(2, '0'); }
@@ -144,13 +314,8 @@ function parseDateTime(v) {
   return isNaN(d.getTime()) ? null : d;
 }
 
-// Groups raw rows by Station -> Date -> TimeOfDay -> {column: [values]}, then
-// reduces to grid/summary payloads per Metric x Station -- same shape/logic
-// as the Excel pivot used to produce, just computed here instead of Python.
-// Rows with a blank/unparseable DateTime are skipped (this is the same fix
-// as the '<' not supported between float and str bug from the Excel version).
 function buildDataFromRows(rows) {
-  const buckets = {};   // station -> date -> time -> {col: [values]}
+  const buckets = {};
   const dateSet = new Set();
   const timeSet = new Set();
   const columns = CONFIG.metrics.map(m => m.column);
@@ -205,57 +370,20 @@ function buildDataFromRows(rows) {
   return { dates, times, payload };
 }
 
-function rainColor(ratio) {
-  // light blue -> dark blue, ratio in [0,1]
-  const c1 = [227, 242, 253], c2 = [21, 101, 192];
-  const lerp = (a, b) => Math.round(a + (b - a) * ratio);
-  return `rgb(${lerp(c1[0], c2[0])}, ${lerp(c1[1], c2[1])}, ${lerp(c1[2], c2[2])})`;
-}
-
-function renderLegend(metric) {
-  legendEl.innerHTML = '';
-  if (metric !== 'Rain') return;
-  const items = [
-    [0, 'Light blue (0mm)'],
-    [0.5, 'Mid'],
-    [1, `Dark blue (${RAIN_CAP}mm)`],
-  ];
-  items.forEach(([ratio, label]) => {
-    const sw = document.createElement('span');
-    sw.className = 'swatch';
-    sw.style.background = rainColor(ratio);
-    legendEl.appendChild(sw);
-    legendEl.appendChild(document.createTextNode(label + '  '));
-  });
-  const overflowSw = document.createElement('span');
-  overflowSw.className = 'swatch';
-  overflowSw.style.background = 'var(--overflow-color)';
-  legendEl.appendChild(overflowSw);
-  legendEl.appendChild(document.createTextNode(`Above ${RAIN_CAP}mm (very dark)`));
-}
-
 function render() {
-  if (!DATA) {
-    table.innerHTML = '<tr><td class="placeholder">Load Phuket_Weather.xlsx above to see the dashboard.</td></tr>';
-    return;
-  }
+  if (!DATA) return;
 
   const metric = metricSel.value;
   const station = stationSel.value;
   const combo = DATA.payload[metric][station];
   const grid = combo.grid, summary = combo.summary;
-  const isRain = metric === 'Rain';
-
-  renderLegend(metric);
 
   table.innerHTML = '';
 
   const thead = document.createElement('tr');
   thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'datecol'}));
   DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
-  const summaryTh = document.createElement('th');
-  summaryTh.textContent = 'Daily Summary';
-  thead.appendChild(summaryTh);
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Summary'}));
   table.appendChild(thead);
 
   DATA.dates.forEach((d, i) => {
@@ -267,29 +395,56 @@ function render() {
     grid[i].forEach(v => {
       const td = document.createElement('td');
 
-      if (isRain) {
+      if (metric === 'Rain') {
         td.className = 'rain-cell';
-        if (v !== null) {
-          const overflow = v > RAIN_CAP;
-          const ratio = Math.min(v, RAIN_CAP) / RAIN_CAP;
-          const bar = document.createElement('div');
-          bar.className = 'bar';
-          bar.style.height = (ratio * 100) + '%';
-          bar.style.background = overflow ? 'var(--overflow-color)' : rainColor(ratio);
-          if (overflow) td.classList.add('overflow');
-          td.appendChild(bar);
-        } else {
-          td.classList.add('empty');
+        if (v !== null && v > 0) {
+          const fillRatio = Math.min(v, RAIN_CAP) / RAIN_CAP;
+          const bucket = document.createElement('div');
+          bucket.className = 'wave-bucket';
+          bucket.style.height = (fillRatio * 100) + '%';
+          td.appendChild(bucket);
         }
         const span = document.createElement('span');
         span.className = 'val';
         span.textContent = v === null ? '' : v;
+        if (v === null) span.className += ' empty';
         td.appendChild(span);
-      } else {
-        // Wind Speed / Land Visibility: plain number only, no colour/bar.
-        td.className = 'plain-cell';
-        td.textContent = v === null ? '' : v;
-        if (v === null) td.classList.add('empty');
+
+      } else if (metric === 'Wind') {
+        td.className = 'wind-cell';
+        if (v !== null && v > 0) {
+          const spinDuration = Math.max(0.2, 3 - (v / 10)); // Speed scales fan animation
+          td.innerHTML = `
+            <div class="wind-container">
+              <svg class="fan-icon" style="animation-duration: ${spinDuration}s" viewBox="0 0 24 24">
+                <path d="M12,11A1,1 0 0,0 11,12A1,1 0 0,0 12,13A1,1 0 0,0 13,12A1,1 0 0,0 12,11M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4C13.2,4 14.18,4.86 14.36,6C13.5,6 12.7,6.36 12.12,6.94C11.54,7.5 11.18,8.3 11.18,9.18C10.3,9.18 9.5,9.54 8.92,10.12C8.34,10.7 8,11.5 8,12.38C8,13.56 8.86,14.54 10,14.72C10,15.58 10.36,16.38 10.94,16.96C11.5,17.54 12.3,17.9 13.18,17.9C14.36,17.9 15.34,17.04 15.52,15.88C16.4,15.88 17.2,15.5 17.78,14.94C18.36,14.36 18.72,13.56 18.72,12.68C18.72,11.5 17.86,10.5 16.7,10.34C16.7,9.46 16.34,8.66 15.76,8.08C15.18,7.5 14.38,7.14 13.5,7.14C13.5,5.96 12.64,5 11.5,5.18C11.66,4.5 12,4 12,4Z"/>
+              </svg>
+              <span>${v}</span>
+            </div>`;
+        } else {
+          td.textContent = v === null ? '' : v;
+          if (v === null) td.className += ' empty';
+        }
+
+      } else if (metric === 'Vis') {
+        td.className = 'vis-cell';
+        if (v !== null) {
+          // Low visibility creates heavier frost
+          if (v < 10) {
+            const blurAmount = Math.max(1, (10 - v) * 0.8);
+            const overlay = document.createElement('div');
+            overlay.className = 'frost-overlay';
+            overlay.style.setProperty('--blur-amount', `${blurAmount}px`);
+            td.appendChild(overlay);
+          }
+          const span = document.createElement('span');
+          span.style.position = 'relative';
+          span.style.zIndex = '2';
+          span.textContent = v;
+          td.appendChild(span);
+        } else {
+          td.className += ' empty';
+        }
       }
 
       tr.appendChild(td);
@@ -306,7 +461,8 @@ function render() {
 
 metricSel.addEventListener('change', render);
 stationSel.addEventListener('change', render);
-render();
+
+window.addEventListener('DOMContentLoaded', autoFetchServerData);
 </script>
 </body>
 </html>
