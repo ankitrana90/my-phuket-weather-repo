@@ -9,11 +9,6 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-latest
-    
-    # Directs GitHub Actions to execute inside the nested folder
-    defaults:
-      run:
-        working-directory: ./my-phuket-weather-repo
 
     permissions:
       contents: write # Allows committing updated Excel and HTML files back to repo
