@@ -4,14 +4,19 @@ on:
   schedule:
     # Runs at minute 0 every 3 hours (00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 UTC)
     - cron: '0 */3 * * *'
-  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+  workflow_dispatch: # Allows manual trigger from GitHub Actions tab
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
+    
+    # Directs GitHub Actions to execute inside the nested folder
+    defaults:
+      run:
+        working-directory: ./my-phuket-weather-repo
 
     permissions:
-      contents: write # Grants permission to commit updated Excel & HTML back to repo
+      contents: write # Allows committing updated Excel and HTML files back to repo
 
     steps:
       - name: Checkout repository
