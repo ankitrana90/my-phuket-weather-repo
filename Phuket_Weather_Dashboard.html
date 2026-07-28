@@ -143,7 +143,7 @@
     letter-spacing: -0.2px;
   }
 
-  th.date-col { text-align: left; padding-left: 16px; min-width: 170px; }
+  th.date-col { text-align: left; padding-left: 16px; min-width: 175px; }
   th.summary-col { min-width: 240px; text-align: left; padding-left: 16px; }
 
   td.date-cell {
@@ -159,13 +159,13 @@
   /* 8-Slot Time Emoji Strip Under Date */
   .emoji-slots-strip {
     display: flex;
-    gap: 4px;
+    gap: 3px;
     margin-top: 8px;
     align-items: center;
   }
 
   .slot-emoji {
-    font-size: 13px;
+    font-size: 12px;
     width: 16px;
     height: 18px;
     display: flex;
@@ -253,7 +253,7 @@
     <!-- Hero Display Card -->
     <div class="hero-card">
       <div class="hero-left">
-        <div class="hero-emoji" id="heroEmoji">🌦️</div>
+        <div class="hero-emoji" id="heroEmoji">🌤️</div>
         <div>
           <div class="hero-val" id="heroVal">-- mm</div>
           <div class="hero-status" id="heroStatus">Scanning precipitation pattern...</div>
@@ -316,12 +316,18 @@ function buildDataFromRows(rows) {
   const timeSet = new Set();
   const columns = CONFIG.metrics.map(m => m.column);
   let latestParsedDT = null;
-  let conditionMap = {}; // station -> date -> time -> emoji
+  let conditionMap = {}; // stationCode -> date -> time -> { emoji, text }
+
+  const rawToCode = {};
+  CONFIG.stations.forEach(s => {
+    rawToCode[s.label_raw.toUpperCase()] = s.code;
+  });
 
   rows.forEach(row => {
     const dt = parseDateTime(row.DateTime);
-    const station = row.Station;
-    if (!dt || !station) return;
+    const stationRaw = (row.Station || '').toString().trim().toUpperCase();
+    const stationCode = rawToCode[stationRaw] || stationRaw;
+    if (!dt || !stationRaw) return;
 
     if (!latestParsedDT || dt > latestParsedDT) {
       latestParsedDT = dt;
@@ -331,19 +337,25 @@ function buildDataFromRows(rows) {
     const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     dateSet.add(dateStr); timeSet.add(timeStr);
 
-    // Parse Condition Emoji for exact time slot
     if (row.Condition) {
-      const parts = row.Condition.trim().split(' ');
+      const condStr = row.Condition.toString().trim();
+      const parts = condStr.split(' ');
       const emoji = parts[0] || '';
-      conditionMap[station] = conditionMap[station] || {};
-      conditionMap[station][dateStr] = conditionMap[station][dateStr] || {};
-      conditionMap[station][dateStr][timeStr] = emoji;
+      const text = parts.slice(1).join(' ') || condStr;
+
+      conditionMap[stationCode] = conditionMap[stationCode] || {};
+      conditionMap[stationCode][dateStr] = conditionMap[stationCode][dateStr] || {};
+      conditionMap[stationCode][dateStr][timeStr] = { emoji, text };
+
+      conditionMap[stationRaw] = conditionMap[stationRaw] || {};
+      conditionMap[stationRaw][dateStr] = conditionMap[stationRaw][dateStr] || {};
+      conditionMap[stationRaw][dateStr][timeStr] = { emoji, text };
     }
 
-    buckets[station] = buckets[station] || {};
-    buckets[station][dateStr] = buckets[station][dateStr] || {};
-    const slot = buckets[station][dateStr][timeStr] =
-      buckets[station][dateStr][timeStr] || Object.fromEntries(columns.map(c => [c, []]));
+    buckets[stationRaw] = buckets[stationRaw] || {};
+    buckets[stationRaw][dateStr] = buckets[stationRaw][dateStr] || {};
+    const slot = buckets[stationRaw][dateStr][timeStr] =
+      buckets[stationRaw][dateStr][timeStr] || Object.fromEntries(columns.map(c => [c, []]));
 
     columns.forEach(col => {
       const v = row[col];
@@ -398,7 +410,11 @@ function getWaterColors(rainVal) {
   };
 }
 
-function evaluateWeather(rain) {
+function evaluateWeather(rain, mainEmoji, mainText) {
+  if (mainText && mainText !== 'Variable Conditions') {
+    return { emoji: mainEmoji || '🌤️', commentary: `${mainText} (${rain}mm daily total)` };
+  }
+  
   if (rain >= 25) {
     return { emoji: '⛈️', commentary: 'Torrential downpours with thunder activity.' };
   } else if (rain >= 12) {
@@ -533,12 +549,30 @@ function renderMatrix() {
   const rainData = DATA.payload.Rain[station];
   const windData = DATA.payload.Wind[station];
 
+  const latestDate = DATA.dates[0];
   const latestRain = rainData.summary[0] !== null ? rainData.summary[0] : 0;
-  const latestEval = evaluateWeather(latestRain);
+
+  // Find latest condition emoji logged in Excel for Hero card
+  let latestEmoji = '🌤️';
+  let latestText = 'Variable Conditions';
+  if (latestDate && DATA.times.length > 0) {
+    for (let j = DATA.times.length - 1; j >= 0; j--) {
+      const t = DATA.times[j];
+      const condObj = (DATA.conditionMap[station] && DATA.conditionMap[station][latestDate] && DATA.conditionMap[station][latestDate][t])
+                   || (DATA.conditionMap[STATION_LABELS[station]] && DATA.conditionMap[STATION_LABELS[station]][latestDate] && DATA.conditionMap[STATION_LABELS[station]][latestDate][t]);
+      if (condObj && condObj.emoji) {
+        latestEmoji = condObj.emoji;
+        latestText = condObj.text;
+        break;
+      }
+    }
+  }
+
+  const latestEval = evaluateWeather(latestRain, latestEmoji, latestText);
 
   document.getElementById('heroVal').textContent = `${latestRain} mm`;
   document.getElementById('heroEmoji').textContent = latestEval.emoji;
-  document.getElementById('heroStatus').textContent = `Latest Record (${DATA.dates[0]}) • ${latestEval.commentary}`;
+  document.getElementById('heroStatus').textContent = `Latest Record (${latestDate}) • ${latestEval.commentary}`;
 
   const table = document.getElementById('matrixTable');
   table.innerHTML = '';
@@ -555,13 +589,22 @@ function renderMatrix() {
     const tr = document.createElement('tr');
     
     const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
-    const evalData = evaluateWeather(totalRain);
 
-    // Generate 8-Slot Emojis Strip for Date Cell (Blank space if no data logged)
+    // Get 8-Slot Condition Emojis for Date Cell
+    let rowFirstEmoji = '';
+    let rowFirstText = '';
     const slotEmojis = DATA.times.map(t => {
-      const emoji = (DATA.conditionMap[station] && DATA.conditionMap[station][d] && DATA.conditionMap[station][d][t]) || '';
-      return emoji ? `<span class="slot-emoji" title="${t}">${emoji}</span>` : `<span class="slot-emoji empty-emoji">&nbsp;</span>`;
+      const condObj = (DATA.conditionMap[station] && DATA.conditionMap[station][d] && DATA.conditionMap[station][d][t])
+                   || (DATA.conditionMap[STATION_LABELS[station]] && DATA.conditionMap[STATION_LABELS[station]][d] && DATA.conditionMap[STATION_LABELS[station]][d][t]);
+      const emoji = condObj ? condObj.emoji : '';
+      if (emoji && !rowFirstEmoji) {
+        rowFirstEmoji = emoji;
+        rowFirstText = condObj.text;
+      }
+      return emoji ? `<span class="slot-emoji" title="${t}: ${condObj.text}">${emoji}</span>` : `<span class="slot-emoji empty-emoji">&nbsp;</span>`;
     }).join('');
+
+    const evalData = evaluateWeather(totalRain, rowFirstEmoji, rowFirstText);
 
     // Date Cell with 8-slot strip
     const dateTd = document.createElement('td');
