@@ -1,13 +1,12 @@
 """
-TMD Phuket Weather -> Raw Excel Log + Advanced Apple Weather Matrix (Single Script).
+TMD Phuket Weather -> Raw Excel Log + Advanced Physics Apple Weather Matrix (Single Script).
 
-Excel (Phuket_Weather.xlsx) logs raw readings along with live condition descriptions fetched from Open-Meteo API.
-The HTML dashboard (Phuket_Weather_Dashboard.html) features:
-  - Dates in DESCENDING order (newest on top).
-  - Clean cells (zeros hidden).
-  - Liquid bucket sloshing effect with color scale transitioning to dark navy at >= 8mm.
-  - Rain particles tilted dynamically up to 60 degrees based on wind speed (50 km/h max).
-  - Open-Meteo API condition integration for real-time daily remarks & emojis.
+Excel (Phuket_Weather.xlsx) logs raw TMD observations alongside real-time condition descriptions
+fetched from Open-Meteo API. The generated HTML dashboard (Phuket_Weather_Dashboard.html) features:
+  - Physics-based fluid dynamics (gravity wave propagation, sloshing, and splash mechanics).
+  - Color gradient scaling from light blue to dark navy at >= 8mm.
+  - Rain particles tilted dynamically up to 60 degrees based on wind speed.
+  - Live Open-Meteo API integration with robust condition mapping.
 """
 
 import argparse
@@ -131,18 +130,20 @@ def fetch_live_weather_condition():
         resp = requests.get(OPEN_METEO_URL, timeout=10)
         resp.raise_for_status()
         data = resp.json()
-        code = data.get("current_weather", {}).get("weathercode", 0)
-        return WMO_CODE_MAP.get(code, ("Variable Conditions", "🌤️"))
+        current = data.get("current_weather", {})
+        code = int(current.get("weathercode", 0))
+        text, emoji = WMO_CODE_MAP.get(code, ("Variable Conditions", "🌤️"))
+        return f"{emoji} {text}"
     except Exception as e:
         print(f"Warning: Could not fetch Open-Meteo condition ({e}). Using fallback.")
-        return ("Atmospheric Observation", "🌤️")
+        return "🌤️ Variable Conditions"
 
 # ----------------------------------------------------------------------------
 # Fetch & Parse
 # ----------------------------------------------------------------------------
 
 def fetch_raw_records():
-    condition_desc, emoji = fetch_live_weather_condition()
+    live_condition = fetch_live_weather_condition()
     resp = requests.get(TMD_URL, params={"uid": TMD_UID, "ukey": TMD_UKEY}, timeout=30)
     resp.raise_for_status()
     root = ET.fromstring(resp.content)
@@ -175,7 +176,7 @@ def fetch_raw_records():
             "rainfall_mm": rain,
             "rainfall_24hr_mm": rain24,
             "land_visibility": visibility,
-            "condition": f"{emoji} {condition_desc}"
+            "condition": live_condition
         })
     return records
 
@@ -448,7 +449,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   .date-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
   .date-emoji { font-size: 20px; margin-top: 4px; }
 
-  /* Sloshing Water Cell */
+  /* Interactive Physics Fluid Cell */
   td.time-cell {
     position: relative;
     width: 82px;
@@ -462,33 +463,8 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
   }
 
   td.time-cell:hover {
-    transform: scale(1.04);
+    transform: scale(1.05);
     border-color: var(--accent-blue);
-  }
-
-  /* Sloshing Tub Container Effect */
-  .water-bucket-level {
-    position: absolute;
-    left: 0; right: 0; bottom: 0;
-    transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.6s ease;
-    pointer-events: none;
-    z-index: 1;
-    overflow: hidden;
-  }
-
-  /* Sloshing Wave Surface Animation */
-  .water-bucket-level::before {
-    content: "";
-    position: absolute;
-    top: -6px; left: 0; width: 200%; height: 12px;
-    background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.4) 0px, transparent 10px, rgba(255, 255, 255, 0.4) 20px);
-    animation: sloshWave 2.2s infinite ease-in-out alternate;
-  }
-
-  @keyframes sloshWave {
-    0% { transform: translateX(0) rotate(0deg); }
-    50% { transform: translateX(-25%) rotate(2deg); }
-    100% { transform: translateX(-50%) rotate(-2deg); }
   }
 
   .cell-canvas {
@@ -496,7 +472,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     inset: 0;
     width: 100%; height: 100%;
     pointer-events: none;
-    z-index: 2;
+    z-index: 1;
   }
 
   .cell-content {
@@ -507,6 +483,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     align-items: center;
     justify-content: center;
     height: 100%;
+    pointer-events: none;
   }
 
   .val-num {
@@ -590,7 +567,7 @@ async function autoFetchServerData() {
     DATA = buildDataFromRows(rows);
     
     document.getElementById('headerMeta').textContent = 
-      `Most Recent Fetch: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      `Most Recent Record: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
     
     renderMatrix();
   } catch (err) {
@@ -672,19 +649,21 @@ function buildDataFromRows(rows) {
   return { dates, times, payload, latestDateTime: latestFormatted, conditionMap: latestConditionMap };
 }
 
-/* Water Color Interpolation (Light Blue -> Dark Navy Blue) */
-function getWaterColor(rainVal) {
-  const cap = 8.0; // 8mm threshold
-  const ratio = Math.min(rainVal, cap) / cap; // 0.0 to 1.0
+/* Fluid Color Palette (Light Blue -> Deep Navy Blue for >= 8mm) */
+function getWaterColors(rainVal) {
+  const cap = 8.0;
+  const ratio = Math.min(rainVal, cap) / cap;
 
-  // Color 1 (Light Blue): rgb(147, 197, 253)
-  // Color 2 (Dark Navy): rgb(2, 21, 38)
+  // Light Blue (0mm): rgb(147, 197, 253) -> Dark Navy (8mm+): rgb(2, 21, 38)
   const r = Math.round(147 + (2 - 147) * ratio);
   const g = Math.round(197 + (21 - 197) * ratio);
   const b = Math.round(253 + (38 - 253) * ratio);
-  const alpha = 0.35 + (0.55 * ratio);
-
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  
+  return {
+    top: `rgba(${r}, ${g}, ${b}, ${0.55 + 0.35 * ratio})`,
+    bottom: `rgba(${Math.max(0, r - 20)}, ${Math.max(0, g - 20)}, ${Math.max(0, b - 20)}, ${0.75 + 0.2 * ratio})`,
+    isDark: ratio >= 0.75
+  };
 }
 
 function evaluateWeather(rain, loggedCondition) {
@@ -708,8 +687,8 @@ function evaluateWeather(rain, loggedCondition) {
   }
 }
 
-/* In-Cell Rain Canvas with Wind-Driven Angle Tilt (Max 60° at 50km/h) */
-function attachRainCanvas(canvasId, rainVal, windSpeed) {
+/* Physics-Based Fluid Sloshing & Splash Canvas Engine */
+function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -718,42 +697,113 @@ function attachRainCanvas(canvasId, rainVal, windSpeed) {
 
   if (rainVal <= 0) return;
 
-  const particles = [];
-  const count = Math.min(Math.floor(rainVal * 8) + 4, 40);
+  const colors = getWaterColors(rainVal);
+  const fillRatio = Math.min(rainVal, CONFIG.rainfall_cap) / CONFIG.rainfall_cap;
+  const targetWaterHeight = canvas.height * fillRatio;
 
   // Wind speed tilt calculation: 50 km/h = 60 degree max angle
   const safeWind = Math.min(windSpeed || 0, 50);
   const tiltAngleRad = (safeWind / 50) * (60 * Math.PI / 180);
-  const xOffset = Math.sin(tiltAngleRad) * 12;
-  const yOffset = Math.cos(tiltAngleRad) * 12;
+  const xOffset = Math.sin(tiltAngleRad) * 10;
+  const yOffset = Math.cos(tiltAngleRad) * 10;
 
-  for (let i = 0; i < count; i++) {
-    particles.push({
+  // Rain Particles
+  const particleCount = Math.min(Math.floor(rainVal * 6) + 3, 30);
+  const rainDrops = [];
+  for (let i = 0; i < particleCount; i++) {
+    rainDrops.push({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      speed: Math.random() * 3 + 2.5
+      speed: Math.random() * 2.5 + 2
+    });
+  }
+
+  // Hydrodynamic Wave Surface Parameters
+  let step = 0;
+  const waveAmplitude = Math.min(2 + rainVal * 0.8, 8); // Higher volume = bigger slosh
+  const sloshSpeed = 0.05 + Math.min(rainVal * 0.01, 0.05);
+
+  // Micro-Splashes
+  const splashes = [];
+  const splashCount = rainVal >= 4 ? Math.floor(rainVal) : 0;
+  for (let i = 0; i < splashCount; i++) {
+    splashes.push({
+      x: Math.random() * canvas.width,
+      y: canvas.height - targetWaterHeight,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: -Math.random() * 2 - 1,
+      size: Math.random() * 1.5 + 0.8
     });
   }
 
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = rainVal >= 8 ? 'rgba(255, 255, 255, 0.7)' : 'rgba(59, 130, 246, 0.5)';
-    ctx.lineWidth = 1.2;
+    step += sloshSpeed;
+
+    // 1. Draw Tilted Rain Droplets
+    ctx.strokeStyle = colors.isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(59, 130, 246, 0.45)';
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
-    particles.forEach(p => {
+    rainDrops.forEach(p => {
       ctx.moveTo(p.x, p.y);
       ctx.lineTo(p.x - xOffset, p.y + yOffset);
       p.y += p.speed;
-      p.x -= (xOffset * 0.15);
+      p.x -= (xOffset * 0.12);
       if (p.y > canvas.height) {
-        p.y = -10;
+        p.y = -8;
         p.x = Math.random() * canvas.width;
       }
     });
     ctx.stroke();
+
+    // 2. Draw Hydrodynamic Sloshing Water Level (Tub/Bucket Shaking Effect)
+    const baseLine = canvas.height - targetWaterHeight;
+    const grad = ctx.createLinearGradient(0, baseLine, 0, canvas.height);
+    grad.addColorStop(0, colors.top);
+    grad.addColorStop(1, colors.bottom);
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height);
+    ctx.lineTo(0, baseLine);
+
+    // Wave Superposition for Sloshing Action
+    for (let x = 0; x <= canvas.width; x += 4) {
+      const y1 = Math.sin(x * 0.08 + step) * waveAmplitude;
+      const y2 = Math.cos(x * 0.12 - step * 0.8) * (waveAmplitude * 0.5);
+      const y = baseLine + y1 + y2;
+      ctx.lineTo(x, y);
+    }
+
+    ctx.lineTo(canvas.width, canvas.height);
+    ctx.closePath();
+    ctx.fill();
+
+    // 3. Render Gravity Droplet Splashes
+    if (splashes.length > 0) {
+      ctx.fillStyle = colors.isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(147, 197, 253, 0.8)';
+      splashes.forEach(sp => {
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.vy += 0.12; // Gravity simulation
+
+        // Reset splash when hitting water level
+        if (sp.y > canvas.height - targetWaterHeight + 4) {
+          sp.x = Math.random() * canvas.width;
+          sp.y = canvas.height - targetWaterHeight;
+          sp.vy = -Math.random() * 2 - 1;
+        }
+      });
+    }
+
     const animId = requestAnimationFrame(render);
     activeCanvasRenderers.push(animId);
   }
+
   render();
 }
 
@@ -809,17 +859,7 @@ function renderMatrix() {
       const td = document.createElement('td');
       td.className = 'time-cell';
 
-      // HIDE IF 0 OR NULL
       if (v !== null && v > 0) {
-        const fillPercent = Math.min(100, (v / CONFIG.rainfall_cap) * 100);
-        const waterColor = getWaterColor(v);
-        
-        const waterBar = document.createElement('div');
-        waterBar.className = 'water-bucket-level';
-        waterBar.style.height = `${fillPercent}%`;
-        waterBar.style.backgroundColor = waterColor;
-        td.appendChild(waterBar);
-
         const canvas = document.createElement('canvas');
         canvas.className = 'cell-canvas';
         canvas.id = `canvas-${i}-${j}`;
@@ -827,11 +867,12 @@ function renderMatrix() {
 
         const content = document.createElement('div');
         content.className = 'cell-content';
-        const numColor = v >= 8 ? '#FFFFFF' : '#0F172A';
+        const isDark = v >= 6;
+        const numColor = isDark ? '#FFFFFF' : '#0F172A';
         content.innerHTML = `<span class="val-num" style="color:${numColor}">${v}</span><span class="val-unit" style="color:${numColor}">mm</span>`;
         td.appendChild(content);
 
-        setTimeout(() => attachRainCanvas(`canvas-${i}-${j}`, v, wSpeed), 50);
+        setTimeout(() => attachFluidPhysicsCanvas(`canvas-${i}-${j}`, v, wSpeed), 50);
       } else {
         td.innerHTML = `<div class="cell-content"></div>`;
       }
@@ -865,7 +906,7 @@ window.addEventListener('DOMContentLoaded', autoFetchServerData);
 # ----------------------------------------------------------------------------
 
 def run_cycle():
-    print(f"[{datetime.now().isoformat()}] Fetching TMD feed...")
+    print(f"[{datetime.now().isoformat()}] Fetching TMD feed & Open-Meteo conditions...")
     records = fetch_records()
     print(f"Built {len(records)} row(s) (raw + combined) this cycle.")
 
@@ -873,7 +914,7 @@ def run_cycle():
     print(f"Excel Data sheet updated (+Condition column): +{added} new row(s), {total} total.")
 
     generate_html_dashboard(HTML_PATH)
-    print(f"Matrix Apple Weather UI generated at {HTML_PATH}")
+    print(f"Physics Apple Weather UI generated at {HTML_PATH}")
 
 def main():
     parser = argparse.ArgumentParser()
