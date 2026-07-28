@@ -284,7 +284,7 @@ CONFIG.stations.forEach(s => {
 async function autoFetchServerData() {
   try {
     const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) throw new Error("HTTP " + res.status);
     const buffer = await res.arrayBuffer();
     
     const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -295,7 +295,7 @@ async function autoFetchServerData() {
     DATA = buildDataFromRows(rows);
     
     document.getElementById('headerMeta').textContent = 
-      `Most Recent Record: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      "Most Recent Record: " + (DATA.latestDateTime || 'Unknown') + " • Rendered " + new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
     
     renderMatrix();
   } catch (err) {
@@ -333,8 +333,8 @@ function buildDataFromRows(rows) {
       latestParsedDT = dt;
     }
 
-    const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
-    const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    const dateStr = dt.getFullYear() + "-" + pad(dt.getMonth() + 1) + "-" + pad(dt.getDate());
+    const timeStr = pad(dt.getHours()) + ":" + pad(dt.getMinutes());
     dateSet.add(dateStr); timeSet.add(timeStr);
 
     if (row.Condition) {
@@ -345,11 +345,11 @@ function buildDataFromRows(rows) {
 
       conditionMap[stationCode] = conditionMap[stationCode] || {};
       conditionMap[stationCode][dateStr] = conditionMap[stationCode][dateStr] || {};
-      conditionMap[stationCode][dateStr][timeStr] = { emoji, text };
+      conditionMap[stationCode][dateStr][timeStr] = { emoji: emoji, text: text };
 
       conditionMap[stationRaw] = conditionMap[stationRaw] || {};
       conditionMap[stationRaw][dateStr] = conditionMap[stationRaw][dateStr] || {};
-      conditionMap[stationRaw][dateStr][timeStr] = { emoji, text };
+      conditionMap[stationRaw][dateStr][timeStr] = { emoji: emoji, text: text };
     }
 
     buckets[stationRaw] = buckets[stationRaw] || {};
@@ -388,7 +388,7 @@ function buildDataFromRows(rows) {
   });
 
   const latestFormatted = latestParsedDT 
-    ? `${latestParsedDT.getFullYear()}-${pad(latestParsedDT.getMonth() + 1)}-${pad(latestParsedDT.getDate())} ${pad(latestParsedDT.getHours())}:${pad(latestParsedDT.getMinutes())}` 
+    ? latestParsedDT.getFullYear() + "-" + pad(latestParsedDT.getMonth() + 1) + "-" + pad(latestParsedDT.getDate()) + " " + pad(latestParsedDT.getHours()) + ":" + pad(latestParsedDT.getMinutes())
     : 'N/A';
 
   return { dates, times, payload, latestDateTime: latestFormatted, conditionMap };
@@ -404,15 +404,15 @@ function getWaterColors(rainVal) {
   const b = Math.round(253 + (38 - 253) * ratio);
   
   return {
-    top: `rgba(${r}, ${g}, ${b}, ${0.55 + 0.35 * ratio})`,
-    bottom: `rgba(${Math.max(0, r - 20)}, ${Math.max(0, g - 20)}, ${Math.max(0, b - 20)}, ${0.75 + 0.2 * ratio})`,
+    top: "rgba(" + r + ", " + g + ", " + b + ", " + (0.55 + 0.35 * ratio) + ")",
+    bottom: "rgba(" + Math.max(0, r - 20) + ", " + Math.max(0, g - 20) + ", " + Math.max(0, b - 20) + ", " + (0.75 + 0.2 * ratio) + ")",
     isDark: ratio >= 0.75
   };
 }
 
 function evaluateWeather(rain, mainEmoji, mainText) {
   if (mainText && mainText !== 'Variable Conditions') {
-    return { emoji: mainEmoji || '🌤️', commentary: `${mainText} (${rain}mm daily total)` };
+    return { emoji: mainEmoji || '🌤️', commentary: mainText + " (" + rain + "mm daily total)" };
   }
   
   if (rain >= 25) {
@@ -433,8 +433,9 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
-  canvas.width = canvas.offsetWidth;
-  canvas.height = canvas.offsetHeight;
+
+  canvas.width = canvas.offsetWidth || 82;
+  canvas.height = canvas.offsetHeight || 80;
 
   if (rainVal <= 0) return;
 
@@ -552,7 +553,6 @@ function renderMatrix() {
   const latestDate = DATA.dates[0];
   const latestRain = rainData.summary[0] !== null ? rainData.summary[0] : 0;
 
-  // Find latest condition emoji logged in Excel for Hero card
   let latestEmoji = '🌤️';
   let latestText = 'Variable Conditions';
   if (latestDate && DATA.times.length > 0) {
@@ -570,27 +570,24 @@ function renderMatrix() {
 
   const latestEval = evaluateWeather(latestRain, latestEmoji, latestText);
 
-  document.getElementById('heroVal').textContent = `${latestRain} mm`;
+  document.getElementById('heroVal').textContent = latestRain + " mm";
   document.getElementById('heroEmoji').textContent = latestEval.emoji;
-  document.getElementById('heroStatus').textContent = `Latest Record (${latestDate}) • ${latestEval.commentary}`;
+  document.getElementById('heroStatus').textContent = "Latest Record (" + latestDate + ") • " + latestEval.commentary;
 
   const table = document.getElementById('matrixTable');
   table.innerHTML = '';
 
-  // Header Row
   const thead = document.createElement('tr');
   thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'date-col'}));
   DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
   thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Remarks', className: 'summary-col'}));
   table.appendChild(thead);
 
-  // Date Rows (Descending Order)
   DATA.dates.forEach((d, i) => {
     const tr = document.createElement('tr');
     
     const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
 
-    // Get 8-Slot Condition Emojis for Date Cell
     let rowFirstEmoji = '';
     let rowFirstText = '';
     const slotEmojis = DATA.times.map(t => {
@@ -601,21 +598,16 @@ function renderMatrix() {
         rowFirstEmoji = emoji;
         rowFirstText = condObj.text;
       }
-      return emoji ? `<span class="slot-emoji" title="${t}: ${condObj.text}">${emoji}</span>` : `<span class="slot-emoji empty-emoji">&nbsp;</span>`;
+      return emoji ? '<span class="slot-emoji" title="' + t + ': ' + condObj.text + '">' + emoji + '</span>' : '<span class="slot-emoji empty-emoji">&nbsp;</span>';
     }).join('');
 
     const evalData = evaluateWeather(totalRain, rowFirstEmoji, rowFirstText);
 
-    // Date Cell with 8-slot strip
     const dateTd = document.createElement('td');
     dateTd.className = 'date-cell';
-    dateTd.innerHTML = `
-      <div class="date-title">${d}</div>
-      <div class="emoji-slots-strip">${slotEmojis}</div>
-    `;
+    dateTd.innerHTML = '<div class="date-title">' + d + '</div><div class="emoji-slots-strip">' + slotEmojis + '</div>';
     tr.appendChild(dateTd);
 
-    // Hourly Cells Beside Date
     DATA.times.forEach((t, j) => {
       const v = rainData.grid[i][j];
       const wSpeed = windData.grid[i][j] || 0;
@@ -625,31 +617,27 @@ function renderMatrix() {
       if (v !== null && v > 0) {
         const canvas = document.createElement('canvas');
         canvas.className = 'cell-canvas';
-        canvas.id = `canvas-${i}-${j}`;
+        canvas.id = 'canvas-' + i + '-' + j;
         td.appendChild(canvas);
 
         const content = document.createElement('div');
         content.className = 'cell-content';
         const isDark = v >= 6;
         const numColor = isDark ? '#FFFFFF' : '#0F172A';
-        content.innerHTML = `<span class="val-num" style="color:${numColor}">${v}</span><span class="val-unit" style="color:${numColor}">mm</span>`;
+        content.innerHTML = '<span class="val-num" style="color:' + numColor + '">' + v + '</span><span class="val-unit" style="color:' + numColor + '">mm</span>';
         td.appendChild(content);
 
-        setTimeout(() => attachFluidPhysicsCanvas(`canvas-${i}-${j}`, v, wSpeed), 50);
+        setTimeout(() => attachFluidPhysicsCanvas('canvas-' + i + '-' + j, v, wSpeed), 50);
       } else {
-        td.innerHTML = `<div class="cell-content"></div>`;
+        td.innerHTML = '<div class="cell-content"></div>';
       }
 
       tr.appendChild(td);
     });
 
-    // Daily Summary Cell
     const sumTd = document.createElement('td');
     sumTd.className = 'summary-cell';
-    sumTd.innerHTML = `
-      <div class="summary-val">${totalRain > 0 ? totalRain + ' mm Total' : '0 mm'}</div>
-      <div class="summary-commentary">${evalData.commentary}</div>
-    `;
+    sumTd.innerHTML = '<div class="summary-val">' + (totalRain > 0 ? totalRain + ' mm Total' : '0 mm') + '</div><div class="summary-commentary">' + evalData.commentary + '</div>';
     tr.appendChild(sumTd);
 
     table.appendChild(tr);
