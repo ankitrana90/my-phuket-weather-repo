@@ -1,11 +1,13 @@
 """
-TMD Phuket Weather -> Raw Excel Log + Matrix Apple Weather Dashboard (Single Script).
+TMD Phuket Weather -> Raw Excel Log + Advanced Apple Weather Matrix (Single Script).
 
-Excel (Phuket_Weather.xlsx) stores RAW DATA ONLY. The generated HTML dashboard
-(Phuket_Weather_Dashboard.html) features a Light Apple Weather matrix grid layout with:
-  - Dates in DESCENDING order (newest dates on top).
-  - Empty cells when value is 0 (no zeros displayed).
-  - Prominent timestamp display for the most recent observation fetched from TMD.
+Excel (Phuket_Weather.xlsx) logs raw readings along with live condition descriptions fetched from Open-Meteo API.
+The HTML dashboard (Phuket_Weather_Dashboard.html) features:
+  - Dates in DESCENDING order (newest on top).
+  - Clean cells (zeros hidden).
+  - Liquid bucket sloshing effect with color scale transitioning to dark navy at >= 8mm.
+  - Rain particles tilted dynamically up to 60 degrees based on wind speed (50 km/h max).
+  - Open-Meteo API condition integration for real-time daily remarks & emojis.
 """
 
 import argparse
@@ -32,6 +34,9 @@ TMD_UID = os.environ.get("TMD_UID", "api")
 TMD_UKEY = os.environ.get("TMD_UKEY", "api12345")
 TMD_URL = "https://data.tmd.go.th/api/Weather3Hours/V2/"
 
+# Open-Meteo Free Weather API for Phuket (Lat: 7.8804, Lon: 98.3923)
+OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast?latitude=7.8804&longitude=98.3923&current_weather=true"
+
 TARGET_STATION_NAMES = {"PHUKET AIRPORT", "PHUKET"}
 TARGET_WMO_NUMBERS = {"48565", "48564"}
 
@@ -46,9 +51,9 @@ DATA_SHEET = "Phuket Weather"
 LEGACY_SHEET_NAMES_TO_DROP = {"Dashboard", "Lists"}
 LEGACY_SHEET_PREFIXES_TO_DROP = ("_pivot_",)
 
-HEADERS = ["Station", "WmoStationNumber", "DateTime", "WindSpeed", "Rainfall_mm", "Rainfall24Hr_mm", "LandVisibility"]
+HEADERS = ["Station", "WmoStationNumber", "DateTime", "WindSpeed", "Rainfall_mm", "Rainfall24Hr_mm", "LandVisibility", "Condition"]
 
-RAINFALL_CAP_MM = 15
+RAINFALL_CAP_MM = 8
 
 STATION_CODES = ["AIRPORT", "PHUKET", "COMBINED"]
 STATION_LABELS = {
@@ -69,6 +74,28 @@ METRICS = [
 ]
 
 INTERVAL_HOURS = 3
+
+# WMO Weather Interpretation Codes (Open-Meteo)
+WMO_CODE_MAP = {
+    0: ("Clear sky", "☀️"),
+    1: ("Mainly clear", "🌤️"),
+    2: ("Partly cloudy", "⛅"),
+    3: ("Overcast", "☁️"),
+    45: ("Fog", "🌫️"),
+    48: ("Depositing rime fog", "🌫️"),
+    51: ("Light drizzle", "🌦️"),
+    53: ("Moderate drizzle", "🌦️"),
+    55: ("Dense drizzle", "🌧️"),
+    61: ("Slight rain", "🌦️"),
+    63: ("Moderate rain", "🌧️"),
+    65: ("Heavy rain", "🌧️"),
+    80: ("Slight rain showers", "🌦️"),
+    81: ("Moderate rain showers", "🌧️"),
+    82: ("Violent rain showers", "⛈️"),
+    95: ("Thunderstorm", "⛈️"),
+    96: ("Thunderstorm with slight hail", "⛈️"),
+    99: ("Thunderstorm with heavy hail", "⛈️"),
+}
 
 # ----------------------------------------------------------------------------
 # Shared Helpers
@@ -98,11 +125,24 @@ def find_text_any(elem, candidates):
             return found.text.strip()
     return None
 
+def fetch_live_weather_condition():
+    """Fetches real-time condition description and emoji from Open-Meteo API."""
+    try:
+        resp = requests.get(OPEN_METEO_URL, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        code = data.get("current_weather", {}).get("weathercode", 0)
+        return WMO_CODE_MAP.get(code, ("Variable Conditions", "🌤️"))
+    except Exception as e:
+        print(f"Warning: Could not fetch Open-Meteo condition ({e}). Using fallback.")
+        return ("Atmospheric Observation", "🌤️")
+
 # ----------------------------------------------------------------------------
 # Fetch & Parse
 # ----------------------------------------------------------------------------
 
 def fetch_raw_records():
+    condition_desc, emoji = fetch_live_weather_condition()
     resp = requests.get(TMD_URL, params={"uid": TMD_UID, "ukey": TMD_UKEY}, timeout=30)
     resp.raise_for_status()
     root = ET.fromstring(resp.content)
@@ -135,6 +175,7 @@ def fetch_raw_records():
             "rainfall_mm": rain,
             "rainfall_24hr_mm": rain24,
             "land_visibility": visibility,
+            "condition": f"{emoji} {condition_desc}"
         })
     return records
 
@@ -147,6 +188,7 @@ def build_station_rows(raw_records):
     for dt in sorted(groups.keys()):
         recs = groups[dt]
         wmo_list = sorted({r["wmo"] for r in recs if r["wmo"]})
+        cond = recs[0]["condition"] if recs else "🌤️ Variable Conditions"
 
         for r in recs:
             rows.append({
@@ -157,6 +199,7 @@ def build_station_rows(raw_records):
                 "rainfall_mm": none_if_nan(r["rainfall_mm"]),
                 "rainfall_24hr_mm": none_if_nan(r["rainfall_24hr_mm"]),
                 "land_visibility": none_if_nan(r["land_visibility"]),
+                "condition": r["condition"]
             })
 
         rows.append({
@@ -167,6 +210,7 @@ def build_station_rows(raw_records):
             "rainfall_mm": mean_ignore_nan([r["rainfall_mm"] for r in recs]),
             "rainfall_24hr_mm": mean_ignore_nan([r["rainfall_24hr_mm"] for r in recs]),
             "land_visibility": mean_ignore_nan([r["land_visibility"] for r in recs]),
+            "condition": cond
         })
 
     return rows
@@ -215,7 +259,7 @@ def update_excel(records):
         key = (r["station"], r["datetime"])
         if key in existing:
             continue
-        ws.append([r["station"], r["wmo"], r["datetime"], r["wind_speed"], r["rainfall_mm"], r["rainfall_24hr_mm"], r["land_visibility"]])
+        ws.append([r["station"], r["wmo"], r["datetime"], r["wind_speed"], r["rainfall_mm"], r["rainfall_24hr_mm"], r["land_visibility"], r.get("condition", "")])
         existing.add(key)
         added += 1
 
@@ -390,17 +434,8 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     letter-spacing: -0.2px;
   }
 
-  th.date-col {
-    text-align: left;
-    padding-left: 16px;
-    min-width: 150px;
-  }
-
-  th.summary-col {
-    min-width: 220px;
-    text-align: left;
-    padding-left: 16px;
-  }
+  th.date-col { text-align: left; padding-left: 16px; min-width: 150px; }
+  th.summary-col { min-width: 240px; text-align: left; padding-left: 16px; }
 
   td.date-cell {
     text-align: left;
@@ -410,17 +445,10 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     border: 1px solid rgba(226, 232, 240, 0.6);
   }
 
-  .date-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text-primary);
-  }
+  .date-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+  .date-emoji { font-size: 20px; margin-top: 4px; }
 
-  .date-emoji {
-    font-size: 20px;
-    margin-top: 4px;
-  }
-
+  /* Sloshing Water Cell */
   td.time-cell {
     position: relative;
     width: 82px;
@@ -438,20 +466,35 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     border-color: var(--accent-blue);
   }
 
-  .water-level-bar {
+  /* Sloshing Tub Container Effect */
+  .water-bucket-level {
     position: absolute;
     left: 0; right: 0; bottom: 0;
-    background: linear-gradient(180deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.45) 100%);
-    transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: height 0.6s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.6s ease;
     pointer-events: none;
     z-index: 1;
+    overflow: hidden;
+  }
+
+  /* Sloshing Wave Surface Animation */
+  .water-bucket-level::before {
+    content: "";
+    position: absolute;
+    top: -6px; left: 0; width: 200%; height: 12px;
+    background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.4) 0px, transparent 10px, rgba(255, 255, 255, 0.4) 20px);
+    animation: sloshWave 2.2s infinite ease-in-out alternate;
+  }
+
+  @keyframes sloshWave {
+    0% { transform: translateX(0) rotate(0deg); }
+    50% { transform: translateX(-25%) rotate(2deg); }
+    100% { transform: translateX(-50%) rotate(-2deg); }
   }
 
   .cell-canvas {
     position: absolute;
     inset: 0;
-    width: 100%;
-    height: 100%;
+    width: 100%; height: 100%;
     pointer-events: none;
     z-index: 2;
   }
@@ -468,16 +511,12 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
 
   .val-num {
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: -0.3px;
-    color: var(--text-primary);
+    text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8);
   }
 
-  .val-unit {
-    font-size: 10px;
-    color: var(--text-secondary);
-    font-weight: 500;
-  }
+  .val-unit { font-size: 10px; color: var(--text-secondary); font-weight: 500; }
 
   td.summary-cell {
     text-align: left;
@@ -487,18 +526,8 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     border: 1px solid rgba(59, 130, 246, 0.15);
   }
 
-  .summary-val {
-    font-size: 18px;
-    font-weight: 600;
-    color: var(--accent-blue);
-  }
-
-  .summary-commentary {
-    font-size: 12px;
-    color: var(--text-secondary);
-    line-height: 1.35;
-    margin-top: 4px;
-  }
+  .summary-val { font-size: 17px; font-weight: 600; color: var(--accent-blue); }
+  .summary-commentary { font-size: 12px; color: var(--text-secondary); line-height: 1.35; margin-top: 4px; }
 
   @media (max-width: 768px) {
     .hero-card { flex-direction: column; align-items: flex-start; gap: 16px; }
@@ -516,7 +545,7 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
       <select id="stationSelect" class="station-select"></select>
     </header>
 
-    <!-- Hero Card -->
+    <!-- Hero Display Card -->
     <div class="hero-card">
       <div class="hero-left">
         <div class="hero-emoji" id="heroEmoji">🌦️</div>
@@ -561,7 +590,7 @@ async function autoFetchServerData() {
     DATA = buildDataFromRows(rows);
     
     document.getElementById('headerMeta').textContent = 
-      `Latest XML Record: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+      `Most Recent Fetch: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
     
     renderMatrix();
   } catch (err) {
@@ -582,6 +611,7 @@ function buildDataFromRows(rows) {
   const timeSet = new Set();
   const columns = CONFIG.metrics.map(m => m.column);
   let latestParsedDT = null;
+  let latestConditionMap = {};
 
   rows.forEach(row => {
     const dt = parseDateTime(row.DateTime);
@@ -596,6 +626,10 @@ function buildDataFromRows(rows) {
     const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     dateSet.add(dateStr); timeSet.add(timeStr);
 
+    if (row.Condition) {
+      latestConditionMap[dateStr] = row.Condition;
+    }
+
     buckets[station] = buckets[station] || {};
     buckets[station][dateStr] = buckets[station][dateStr] || {};
     const slot = buckets[station][dateStr][timeStr] =
@@ -607,7 +641,6 @@ function buildDataFromRows(rows) {
     });
   });
 
-  // SORT DATES IN DESCENDING ORDER (Newest on top)
   const dates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
   const times = Array.from(timeSet).sort((a, b) => a.localeCompare(b));
 
@@ -636,10 +669,32 @@ function buildDataFromRows(rows) {
     ? `${latestParsedDT.getFullYear()}-${pad(latestParsedDT.getMonth() + 1)}-${pad(latestParsedDT.getDate())} ${pad(latestParsedDT.getHours())}:${pad(latestParsedDT.getMinutes())}` 
     : 'N/A';
 
-  return { dates, times, payload, latestDateTime: latestFormatted };
+  return { dates, times, payload, latestDateTime: latestFormatted, conditionMap: latestConditionMap };
 }
 
-function evaluateWeather(rain) {
+/* Water Color Interpolation (Light Blue -> Dark Navy Blue) */
+function getWaterColor(rainVal) {
+  const cap = 8.0; // 8mm threshold
+  const ratio = Math.min(rainVal, cap) / cap; // 0.0 to 1.0
+
+  // Color 1 (Light Blue): rgb(147, 197, 253)
+  // Color 2 (Dark Navy): rgb(2, 21, 38)
+  const r = Math.round(147 + (2 - 147) * ratio);
+  const g = Math.round(197 + (21 - 197) * ratio);
+  const b = Math.round(253 + (38 - 253) * ratio);
+  const alpha = 0.35 + (0.55 * ratio);
+
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function evaluateWeather(rain, loggedCondition) {
+  if (loggedCondition) {
+    const parts = loggedCondition.split(' ');
+    const emoji = parts[0] || '🌤️';
+    const text = parts.slice(1).join(' ') || 'Variable Conditions';
+    return { emoji, commentary: `${text} (${rain}mm daily accumulation)` };
+  }
+  
   if (rain >= 25) {
     return { emoji: '⛈️', commentary: 'Torrential downpours with thunder activity.' };
   } else if (rain >= 12) {
@@ -653,7 +708,8 @@ function evaluateWeather(rain) {
   }
 }
 
-function attachRainCanvas(canvasId, rainVal) {
+/* In-Cell Rain Canvas with Wind-Driven Angle Tilt (Max 60° at 50km/h) */
+function attachRainCanvas(canvasId, rainVal, windSpeed) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -665,26 +721,32 @@ function attachRainCanvas(canvasId, rainVal) {
   const particles = [];
   const count = Math.min(Math.floor(rainVal * 8) + 4, 40);
 
+  // Wind speed tilt calculation: 50 km/h = 60 degree max angle
+  const safeWind = Math.min(windSpeed || 0, 50);
+  const tiltAngleRad = (safeWind / 50) * (60 * Math.PI / 180);
+  const xOffset = Math.sin(tiltAngleRad) * 12;
+  const yOffset = Math.cos(tiltAngleRad) * 12;
+
   for (let i = 0; i < count; i++) {
     particles.push({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      len: Math.random() * 10 + 5,
       speed: Math.random() * 3 + 2.5
     });
   }
 
   function render() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.strokeStyle = 'rgba(59, 130, 246, 0.4)';
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = rainVal >= 8 ? 'rgba(255, 255, 255, 0.7)' : 'rgba(59, 130, 246, 0.5)';
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
     particles.forEach(p => {
       ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x - 0.8, p.y + p.len);
+      ctx.lineTo(p.x - xOffset, p.y + yOffset);
       p.y += p.speed;
+      p.x -= (xOffset * 0.15);
       if (p.y > canvas.height) {
-        p.y = -p.len;
+        p.y = -10;
         p.x = Math.random() * canvas.width;
       }
     });
@@ -703,14 +765,15 @@ function renderMatrix() {
 
   const station = stationSelect.value;
   const rainData = DATA.payload.Rain[station];
+  const windData = DATA.payload.Wind[station];
 
-  // Most recent date summary (index 0 since dates are sorted descending)
   const latestRain = rainData.summary[0] !== null ? rainData.summary[0] : 0;
-  const latestEval = evaluateWeather(latestRain);
+  const latestCond = DATA.conditionMap[DATA.dates[0]];
+  const latestEval = evaluateWeather(latestRain, latestCond);
 
   document.getElementById('heroVal').textContent = `${latestRain} mm`;
   document.getElementById('heroEmoji').textContent = latestEval.emoji;
-  document.getElementById('heroStatus').textContent = `Latest Daily Summary (${DATA.dates[0]}) • ${latestEval.commentary}`;
+  document.getElementById('heroStatus').textContent = `Latest Record (${DATA.dates[0]}) • ${latestEval.commentary}`;
 
   const table = document.getElementById('matrixTable');
   table.innerHTML = '';
@@ -719,7 +782,7 @@ function renderMatrix() {
   const thead = document.createElement('tr');
   thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'date-col'}));
   DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
-  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Commentary', className: 'summary-col'}));
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Remarks', className: 'summary-col'}));
   table.appendChild(thead);
 
   // Date Rows (Descending Order)
@@ -727,7 +790,8 @@ function renderMatrix() {
     const tr = document.createElement('tr');
     
     const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
-    const evalData = evaluateWeather(totalRain);
+    const condStr = DATA.conditionMap[d];
+    const evalData = evaluateWeather(totalRain, condStr);
 
     // Date Cell
     const dateTd = document.createElement('td');
@@ -741,16 +805,19 @@ function renderMatrix() {
     // Hourly Cells Beside Date
     DATA.times.forEach((t, j) => {
       const v = rainData.grid[i][j];
+      const wSpeed = windData.grid[i][j] || 0;
       const td = document.createElement('td');
       td.className = 'time-cell';
 
       // HIDE IF 0 OR NULL
       if (v !== null && v > 0) {
         const fillPercent = Math.min(100, (v / CONFIG.rainfall_cap) * 100);
+        const waterColor = getWaterColor(v);
         
         const waterBar = document.createElement('div');
-        waterBar.className = 'water-level-bar';
+        waterBar.className = 'water-bucket-level';
         waterBar.style.height = `${fillPercent}%`;
+        waterBar.style.backgroundColor = waterColor;
         td.appendChild(waterBar);
 
         const canvas = document.createElement('canvas');
@@ -760,12 +827,12 @@ function renderMatrix() {
 
         const content = document.createElement('div');
         content.className = 'cell-content';
-        content.innerHTML = `<span class="val-num">${v}</span><span class="val-unit">mm</span>`;
+        const numColor = v >= 8 ? '#FFFFFF' : '#0F172A';
+        content.innerHTML = `<span class="val-num" style="color:${numColor}">${v}</span><span class="val-unit" style="color:${numColor}">mm</span>`;
         td.appendChild(content);
 
-        setTimeout(() => attachRainCanvas(`canvas-${i}-${j}`, v), 50);
+        setTimeout(() => attachRainCanvas(`canvas-${i}-${j}`, v, wSpeed), 50);
       } else {
-        // Completely empty cell when 0 or null
         td.innerHTML = `<div class="cell-content"></div>`;
       }
 
@@ -803,7 +870,7 @@ def run_cycle():
     print(f"Built {len(records)} row(s) (raw + combined) this cycle.")
 
     added, total = update_excel(records)
-    print(f"Excel Data sheet updated: +{added} new row(s), {total} total.")
+    print(f"Excel Data sheet updated (+Condition column): +{added} new row(s), {total} total.")
 
     generate_html_dashboard(HTML_PATH)
     print(f"Matrix Apple Weather UI generated at {HTML_PATH}")
