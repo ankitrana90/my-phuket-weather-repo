@@ -3,10 +3,12 @@ TMD Phuket Weather -> Raw Excel Log + Advanced Physics Apple Weather Matrix (Sin
 
 Excel (Phuket_Weather.xlsx) logs raw TMD observations alongside real-time condition descriptions
 fetched from Open-Meteo API. The generated HTML dashboard (Phuket_Weather_Dashboard.html) features:
+  - Dates in DESCENDING order (newest on top).
+  - Clean cells (zeros hidden).
+  - 8-Slot real-time condition emoji row beneath each Date header (blank space if no data).
   - Physics-based fluid dynamics (gravity wave propagation, sloshing, and splash mechanics).
   - Color gradient scaling from light blue to dark navy at >= 8mm.
   - Rain particles tilted dynamically up to 60 degrees based on wind speed.
-  - Live Open-Meteo API integration with robust condition mapping.
 """
 
 import argparse
@@ -435,19 +437,39 @@ _HTML_TEMPLATE = """<!DOCTYPE html>
     letter-spacing: -0.2px;
   }
 
-  th.date-col { text-align: left; padding-left: 16px; min-width: 150px; }
+  th.date-col { text-align: left; padding-left: 16px; min-width: 170px; }
   th.summary-col { min-width: 240px; text-align: left; padding-left: 16px; }
 
   td.date-cell {
     text-align: left;
-    padding: 12px 16px;
+    padding: 12px 14px;
     background: rgba(255, 255, 255, 0.6);
     border-radius: 16px;
     border: 1px solid rgba(226, 232, 240, 0.6);
   }
 
   .date-title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
-  .date-emoji { font-size: 20px; margin-top: 4px; }
+
+  /* 8-Slot Time Emoji Strip Under Date */
+  .emoji-slots-strip {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+    align-items: center;
+  }
+
+  .slot-emoji {
+    font-size: 13px;
+    width: 16px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .slot-emoji.empty-emoji {
+    opacity: 0;
+  }
 
   /* Interactive Physics Fluid Cell */
   td.time-cell {
@@ -588,7 +610,7 @@ function buildDataFromRows(rows) {
   const timeSet = new Set();
   const columns = CONFIG.metrics.map(m => m.column);
   let latestParsedDT = null;
-  let latestConditionMap = {};
+  let conditionMap = {}; // station -> date -> time -> emoji
 
   rows.forEach(row => {
     const dt = parseDateTime(row.DateTime);
@@ -603,8 +625,13 @@ function buildDataFromRows(rows) {
     const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
     dateSet.add(dateStr); timeSet.add(timeStr);
 
+    // Parse Condition Emoji for exact time slot
     if (row.Condition) {
-      latestConditionMap[dateStr] = row.Condition;
+      const parts = row.Condition.trim().split(' ');
+      const emoji = parts[0] || '';
+      conditionMap[station] = conditionMap[station] || {};
+      conditionMap[station][dateStr] = conditionMap[station][dateStr] || {};
+      conditionMap[station][dateStr][timeStr] = emoji;
     }
 
     buckets[station] = buckets[station] || {};
@@ -646,7 +673,7 @@ function buildDataFromRows(rows) {
     ? `${latestParsedDT.getFullYear()}-${pad(latestParsedDT.getMonth() + 1)}-${pad(latestParsedDT.getDate())} ${pad(latestParsedDT.getHours())}:${pad(latestParsedDT.getMinutes())}` 
     : 'N/A';
 
-  return { dates, times, payload, latestDateTime: latestFormatted, conditionMap: latestConditionMap };
+  return { dates, times, payload, latestDateTime: latestFormatted, conditionMap };
 }
 
 /* Fluid Color Palette (Light Blue -> Deep Navy Blue for >= 8mm) */
@@ -654,7 +681,6 @@ function getWaterColors(rainVal) {
   const cap = 8.0;
   const ratio = Math.min(rainVal, cap) / cap;
 
-  // Light Blue (0mm): rgb(147, 197, 253) -> Dark Navy (8mm+): rgb(2, 21, 38)
   const r = Math.round(147 + (2 - 147) * ratio);
   const g = Math.round(197 + (21 - 197) * ratio);
   const b = Math.round(253 + (38 - 253) * ratio);
@@ -666,14 +692,7 @@ function getWaterColors(rainVal) {
   };
 }
 
-function evaluateWeather(rain, loggedCondition) {
-  if (loggedCondition) {
-    const parts = loggedCondition.split(' ');
-    const emoji = parts[0] || '🌤️';
-    const text = parts.slice(1).join(' ') || 'Variable Conditions';
-    return { emoji, commentary: `${text} (${rain}mm daily accumulation)` };
-  }
-  
+function evaluateWeather(rain) {
   if (rain >= 25) {
     return { emoji: '⛈️', commentary: 'Torrential downpours with thunder activity.' };
   } else if (rain >= 12) {
@@ -701,13 +720,11 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
   const fillRatio = Math.min(rainVal, CONFIG.rainfall_cap) / CONFIG.rainfall_cap;
   const targetWaterHeight = canvas.height * fillRatio;
 
-  // Wind speed tilt calculation: 50 km/h = 60 degree max angle
   const safeWind = Math.min(windSpeed || 0, 50);
   const tiltAngleRad = (safeWind / 50) * (60 * Math.PI / 180);
   const xOffset = Math.sin(tiltAngleRad) * 10;
   const yOffset = Math.cos(tiltAngleRad) * 10;
 
-  // Rain Particles
   const particleCount = Math.min(Math.floor(rainVal * 6) + 3, 30);
   const rainDrops = [];
   for (let i = 0; i < particleCount; i++) {
@@ -718,12 +735,10 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
     });
   }
 
-  // Hydrodynamic Wave Surface Parameters
   let step = 0;
-  const waveAmplitude = Math.min(2 + rainVal * 0.8, 8); // Higher volume = bigger slosh
+  const waveAmplitude = Math.min(2 + rainVal * 0.8, 8);
   const sloshSpeed = 0.05 + Math.min(rainVal * 0.01, 0.05);
 
-  // Micro-Splashes
   const splashes = [];
   const splashCount = rainVal >= 4 ? Math.floor(rainVal) : 0;
   for (let i = 0; i < splashCount; i++) {
@@ -740,7 +755,6 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     step += sloshSpeed;
 
-    // 1. Draw Tilted Rain Droplets
     ctx.strokeStyle = colors.isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(59, 130, 246, 0.45)';
     ctx.lineWidth = 1.1;
     ctx.beginPath();
@@ -756,7 +770,6 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
     });
     ctx.stroke();
 
-    // 2. Draw Hydrodynamic Sloshing Water Level (Tub/Bucket Shaking Effect)
     const baseLine = canvas.height - targetWaterHeight;
     const grad = ctx.createLinearGradient(0, baseLine, 0, canvas.height);
     grad.addColorStop(0, colors.top);
@@ -767,7 +780,6 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
     ctx.moveTo(0, canvas.height);
     ctx.lineTo(0, baseLine);
 
-    // Wave Superposition for Sloshing Action
     for (let x = 0; x <= canvas.width; x += 4) {
       const y1 = Math.sin(x * 0.08 + step) * waveAmplitude;
       const y2 = Math.cos(x * 0.12 - step * 0.8) * (waveAmplitude * 0.5);
@@ -779,7 +791,6 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
     ctx.closePath();
     ctx.fill();
 
-    // 3. Render Gravity Droplet Splashes
     if (splashes.length > 0) {
       ctx.fillStyle = colors.isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(147, 197, 253, 0.8)';
       splashes.forEach(sp => {
@@ -789,9 +800,8 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
 
         sp.x += sp.vx;
         sp.y += sp.vy;
-        sp.vy += 0.12; // Gravity simulation
+        sp.vy += 0.12;
 
-        // Reset splash when hitting water level
         if (sp.y > canvas.height - targetWaterHeight + 4) {
           sp.x = Math.random() * canvas.width;
           sp.y = canvas.height - targetWaterHeight;
@@ -818,8 +828,7 @@ function renderMatrix() {
   const windData = DATA.payload.Wind[station];
 
   const latestRain = rainData.summary[0] !== null ? rainData.summary[0] : 0;
-  const latestCond = DATA.conditionMap[DATA.dates[0]];
-  const latestEval = evaluateWeather(latestRain, latestCond);
+  const latestEval = evaluateWeather(latestRain);
 
   document.getElementById('heroVal').textContent = `${latestRain} mm`;
   document.getElementById('heroEmoji').textContent = latestEval.emoji;
@@ -840,15 +849,20 @@ function renderMatrix() {
     const tr = document.createElement('tr');
     
     const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
-    const condStr = DATA.conditionMap[d];
-    const evalData = evaluateWeather(totalRain, condStr);
+    const evalData = evaluateWeather(totalRain);
 
-    // Date Cell
+    // Generate 8-Slot Emojis Strip for Date Cell (Blank space if no data logged)
+    const slotEmojis = DATA.times.map(t => {
+      const emoji = (DATA.conditionMap[station] && DATA.conditionMap[station][d] && DATA.conditionMap[station][d][t]) || '';
+      return emoji ? `<span class="slot-emoji" title="${t}">${emoji}</span>` : `<span class="slot-emoji empty-emoji">&nbsp;</span>`;
+    }).join('');
+
+    // Date Cell with 8-slot strip
     const dateTd = document.createElement('td');
     dateTd.className = 'date-cell';
     dateTd.innerHTML = `
       <div class="date-title">${d}</div>
-      <div class="date-emoji">${evalData.emoji}</div>
+      <div class="emoji-slots-strip">${slotEmojis}</div>
     `;
     tr.appendChild(dateTd);
 
