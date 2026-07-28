@@ -569,7 +569,10 @@ const stationSelect = document.getElementById('stationSelect');
 let DATA = null;
 let activeCanvasRenderers = [];
 
+// JS lookup dictionary mapping station codes to their raw XML names
+const STATION_LABELS_MAP = {};
 CONFIG.stations.forEach(s => {
+  STATION_LABELS_MAP[s.code] = s.label_raw;
   const opt = document.createElement('option');
   opt.value = s.code; opt.textContent = s.label_display;
   if (s.code === 'COMBINED') opt.selected = true;
@@ -629,7 +632,7 @@ function buildDataFromRows(rows) {
   const timeSet = new Set();
   const columns = CONFIG.metrics.map(m => m.column);
   let latestParsedDT = null;
-  let conditionMap = {}; // stationCode -> date -> time -> { emoji, text }
+  let conditionMap = {}; // stationCode/raw -> date -> time -> { emoji, text }
 
   const rawToCode = {};
   CONFIG.stations.forEach(s => {
@@ -739,6 +742,14 @@ function evaluateWeather(rain, mainEmoji, mainText) {
   } else {
     return { emoji: '☀️', commentary: 'Optimal clear conditions with no rain recorded.' };
   }
+}
+
+/* Helper to lookup Condition Object safely */
+function getConditionObj(station, date, time) {
+  if (!DATA || !DATA.conditionMap) return null;
+  const rawLabel = STATION_LABELS_MAP[station] || station;
+  return (DATA.conditionMap[station] && DATA.conditionMap[station][date] && DATA.conditionMap[station][date][time])
+      || (DATA.conditionMap[rawLabel] && DATA.conditionMap[rawLabel][date] && DATA.conditionMap[rawLabel][date][time]) || null;
 }
 
 /* Physics-Based Fluid Sloshing & Splash Canvas Engine */
@@ -871,8 +882,7 @@ function renderMatrix() {
   if (latestDate && DATA.times.length > 0) {
     for (let j = DATA.times.length - 1; j >= 0; j--) {
       const t = DATA.times[j];
-      const condObj = (DATA.conditionMap[station] && DATA.conditionMap[station][latestDate] && DATA.conditionMap[station][latestDate][t])
-                   || (DATA.conditionMap[STATION_LABELS[station]] && DATA.conditionMap[STATION_LABELS[station]][latestDate] && DATA.conditionMap[STATION_LABELS[station]][latestDate][t]);
+      const condObj = getConditionObj(station, latestDate, t);
       if (condObj && condObj.emoji) {
         latestEmoji = condObj.emoji;
         latestText = condObj.text;
@@ -904,8 +914,7 @@ function renderMatrix() {
     let rowFirstEmoji = '';
     let rowFirstText = '';
     const slotEmojis = DATA.times.map(t => {
-      const condObj = (DATA.conditionMap[station] && DATA.conditionMap[station][d] && DATA.conditionMap[station][d][t])
-                   || (DATA.conditionMap[STATION_LABELS[station]] && DATA.conditionMap[STATION_LABELS[station]][d] && DATA.conditionMap[STATION_LABELS[station]][d][t]);
+      const condObj = getConditionObj(station, d, t);
       const emoji = condObj ? condObj.emoji : '';
       if (emoji && !rowFirstEmoji) {
         rowFirstEmoji = emoji;
