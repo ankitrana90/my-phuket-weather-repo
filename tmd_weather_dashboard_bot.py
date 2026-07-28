@@ -579,36 +579,417 @@ CONFIG.stations.forEach(s => {
 async function autoFetchServerData() {
   try {
     const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
-    if (!resThis usually comes down to two distinct issues: **formatting/aggregation handling** between Excel and your dashboard, and **evaluation context/sorting** for the latest record.
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const buffer = await res.arrayBuffer();
+    
+    const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
+    const sheet = wb.Sheets[CONFIG.data_sheet_name];
+    if (!sheet) throw new Error("Data sheet missing");
 
-Here are the most common root causes and how to fix them:
+    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    DATA = buildDataFromRows(rows);
+    
+    document.getElementById('headerMeta').textContent = 
+      `Most Recent Record: ${DATA.latestDateTime || 'Unknown'} • Rendered ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
+    
+    renderMatrix();
+  } catch (err) {
+    document.getElementById('headerMeta').textContent = 'Displaying cached telemetry';
+  }
+}
 
----
+function pad(n) { return n.toString().padStart(2, '0'); }
+function parseDateTime(v) {
+  if (!v) return null;
+  const d = (v instanceof Date) ? v : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
 
-## 1. Why the Emoji is Missing Near the Date in the Dashboard
+function buildDataFromRows(rows) {
+  const buckets = {};
+  const dateSet = new Set();
+  const timeSet = new Set();
+  const columns = CONFIG.metrics.map(m => m.column);
+  let latestParsedDT = null;
+  let conditionMap = {}; // stationCode -> date -> time -> { emoji, text }
 
-* **Measure vs. Column Aggregation:** If your dashboard treats the date or status as a measure/metric rather than a dimension/row, it might be trying to aggregate the text (e.g., taking `FIRST()` or `MAX()`) and failing to display the emoji.
-  * **Fix:** Ensure the field containing the emoji is set as an **unaggregated dimension/attribute** or categorized as plain text.
-* **Date Format Mismatch in Relationships:** If the date format in Excel (e.g., `DD/MM/YYYY`) is parsed differently by the dashboard engine (e.g., `MM/DD/YYYY` or string), the conditional logic fails to find a match and returns `BLANK` or `NULL`.
-  * **Fix:** Convert both date columns explicitly to a standard **Date/Time data type** inside your dashboard's data model or query editor before applying conditional logic.
-* **Unicode/Font Rendering:** Some dashboard server environments (especially web renderers) strip UTF-8 emojis or default to system fonts that don't support color emojis.
-  * **Fix:** Try replacing high-range emojis with standard web-safe icons, SVG indicators, or basic Unicode symbols (e.g., `▲`, `▼`, `●`) as a test.
+  const rawToCode = {};
+  CONFIG.stations.forEach(s => {
+    rawToCode[s.label_raw.toUpperCase()] = s.code;
+  });
 
----
+  rows.forEach(row => {
+    const dt = parseDateTime(row.DateTime);
+    const stationRaw = (row.Station || '').toString().trim().toUpperCase();
+    const stationCode = rawToCode[stationRaw] || stationRaw;
+    if (!dt || !stationRaw) return;
 
-## 2. Why the Top Emoji (Latest Record) Is Showing the Wrong Condition
+    if (!latestParsedDT || dt > latestParsedDT) {
+      latestParsedDT = dt;
+    }
 
-* **Text-Based Date Sorting:** If the date column is stored as text, sorting evaluates alphabetically (e.g., `"15/01/2026"` comes after `"01/08/2026"`), picking the wrong "latest" row.
-  * **Fix:** Sort explicitly by a raw `DateTime` column or integer timestamp (`YYYYMMDD`).
-* **Condition Evaluated on Summary instead of Row:** A common DAX/SQL mistake is evaluating the condition on an aggregated metric (e.g., `AVERAGE` or `SUM`) across the entire table rather than filtering to the single row corresponding to `MAX(Date)`.
-  * **Fix Structure (Logic Flow):**
-    1. Identify `Max_Date = MAX(Table[Date])`
-    2. Filter table to `Table[Date] = Max_Date`
-    3. Retrieve the status/value **for that specific row**
-    4. Apply the `IF` / `SWITCH` emoji logic to *that* single value.
+    const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+    const timeStr = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+    dateSet.add(dateStr); timeSet.add(timeStr);
 
----
+    if (row.Condition) {
+      const condStr = row.Condition.toString().trim();
+      const parts = condStr.split(' ');
+      const emoji = parts[0] || '';
+      const text = parts.slice(1).join(' ') || condStr;
 
-<ElicitationsGroup message="To give you the exact formula or setup fix:">
-  <Elicitation label="Share dashboard platform and formula logic" query="I am using [Power BI / Tableau / Excel / Custom App]. Here is the formula or logic I'm using to show the emoji:" />
-</ElicitationsGroup>
+      conditionMap[stationCode] = conditionMap[stationCode] || {};
+      conditionMap[stationCode][dateStr] = conditionMap[stationCode][dateStr] || {};
+      conditionMap[stationCode][dateStr][timeStr] = { emoji, text };
+
+      conditionMap[stationRaw] = conditionMap[stationRaw] || {};
+      conditionMap[stationRaw][dateStr] = conditionMap[stationRaw][dateStr] || {};
+      conditionMap[stationRaw][dateStr][timeStr] = { emoji, text };
+    }
+
+    buckets[stationRaw] = buckets[stationRaw] || {};
+    buckets[stationRaw][dateStr] = buckets[stationRaw][dateStr] || {};
+    const slot = buckets[stationRaw][dateStr][timeStr] =
+      buckets[stationRaw][dateStr][timeStr] || Object.fromEntries(columns.map(c => [c, []]));
+
+    columns.forEach(col => {
+      const v = row[col];
+      if (v !== null && v !== undefined && v !== '' && !isNaN(Number(v))) slot[col].push(Number(v));
+    });
+  });
+
+  const dates = Array.from(dateSet).sort((a, b) => b.localeCompare(a));
+  const times = Array.from(timeSet).sort((a, b) => a.localeCompare(b));
+
+  const round2 = x => Math.round(x * 100) / 100;
+  const mean = arr => arr.length ? round2(arr.reduce((a, b) => a + b, 0) / arr.length) : null;
+
+  const payload = {};
+  CONFIG.metrics.forEach(m => {
+    payload[m.code] = {};
+    CONFIG.stations.forEach(s => {
+      const stationLabel = s.label_raw;
+      const grid = dates.map(d => times.map(t => {
+        const slot = buckets[stationLabel] && buckets[stationLabel][d] && buckets[stationLabel][d][t];
+        return slot ? mean(slot[m.column]) : null;
+      }));
+      const summary = grid.map(rowVals => {
+        const present = rowVals.filter(v => v !== null);
+        if (!present.length) return null;
+        return m.code === 'Rain' ? round2(present.reduce((a, b) => a + b, 0)) : mean(present);
+      });
+      payload[m.code][s.code] = { grid, summary };
+    });
+  });
+
+  const latestFormatted = latestParsedDT 
+    ? `${latestParsedDT.getFullYear()}-${pad(latestParsedDT.getMonth() + 1)}-${pad(latestParsedDT.getDate())} ${pad(latestParsedDT.getHours())}:${pad(latestParsedDT.getMinutes())}` 
+    : 'N/A';
+
+  return { dates, times, payload, latestDateTime: latestFormatted, conditionMap };
+}
+
+/* Fluid Color Palette (Light Blue -> Deep Navy Blue for >= 8mm) */
+function getWaterColors(rainVal) {
+  const cap = 8.0;
+  const ratio = Math.min(rainVal, cap) / cap;
+
+  const r = Math.round(147 + (2 - 147) * ratio);
+  const g = Math.round(197 + (21 - 197) * ratio);
+  const b = Math.round(253 + (38 - 253) * ratio);
+  
+  return {
+    top: `rgba(${r}, ${g}, ${b}, ${0.55 + 0.35 * ratio})`,
+    bottom: `rgba(${Math.max(0, r - 20)}, ${Math.max(0, g - 20)}, ${Math.max(0, b - 20)}, ${0.75 + 0.2 * ratio})`,
+    isDark: ratio >= 0.75
+  };
+}
+
+function evaluateWeather(rain, mainEmoji, mainText) {
+  if (mainText && mainText !== 'Variable Conditions') {
+    return { emoji: mainEmoji || '🌤️', commentary: `${mainText} (${rain}mm daily total)` };
+  }
+  
+  if (rain >= 25) {
+    return { emoji: '⛈️', commentary: 'Torrential downpours with thunder activity.' };
+  } else if (rain >= 12) {
+    return { emoji: '🌧️', commentary: 'Heavy monsoon rainfall across multiple hours.' };
+  } else if (rain >= 4) {
+    return { emoji: '🌦️', commentary: 'Passing scattered showers throughout the day.' };
+  } else if (rain > 0) {
+    return { emoji: '🌤️', commentary: 'Light intermittent drizzle with dry intervals.' };
+  } else {
+    return { emoji: '☀️', commentary: 'Optimal clear conditions with no rain recorded.' };
+  }
+}
+
+/* Physics-Based Fluid Sloshing & Splash Canvas Engine */
+function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+
+  if (rainVal <= 0) return;
+
+  const colors = getWaterColors(rainVal);
+  const fillRatio = Math.min(rainVal, CONFIG.rainfall_cap) / CONFIG.rainfall_cap;
+  const targetWaterHeight = canvas.height * fillRatio;
+
+  const safeWind = Math.min(windSpeed || 0, 50);
+  const tiltAngleRad = (safeWind / 50) * (60 * Math.PI / 180);
+  const xOffset = Math.sin(tiltAngleRad) * 10;
+  const yOffset = Math.cos(tiltAngleRad) * 10;
+
+  const particleCount = Math.min(Math.floor(rainVal * 6) + 3, 30);
+  const rainDrops = [];
+  for (let i = 0; i < particleCount; i++) {
+    rainDrops.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      speed: Math.random() * 2.5 + 2
+    });
+  }
+
+  let step = 0;
+  const waveAmplitude = Math.min(2 + rainVal * 0.8, 8);
+  const sloshSpeed = 0.05 + Math.min(rainVal * 0.01, 0.05);
+
+  const splashes = [];
+  const splashCount = rainVal >= 4 ? Math.floor(rainVal) : 0;
+  for (let i = 0; i < splashCount; i++) {
+    splashes.push({
+      x: Math.random() * canvas.width,
+      y: canvas.height - targetWaterHeight,
+      vx: (Math.random() - 0.5) * 1.5,
+      vy: -Math.random() * 2 - 1,
+      size: Math.random() * 1.5 + 0.8
+    });
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    step += sloshSpeed;
+
+    ctx.strokeStyle = colors.isDark ? 'rgba(255, 255, 255, 0.6)' : 'rgba(59, 130, 246, 0.45)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    rainDrops.forEach(p => {
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - xOffset, p.y + yOffset);
+      p.y += p.speed;
+      p.x -= (xOffset * 0.12);
+      if (p.y > canvas.height) {
+        p.y = -8;
+        p.x = Math.random() * canvas.width;
+      }
+    });
+    ctx.stroke();
+
+    const baseLine = canvas.height - targetWaterHeight;
+    const grad = ctx.createLinearGradient(0, baseLine, 0, canvas.height);
+    grad.addColorStop(0, colors.top);
+    grad.addColorStop(1, colors.bottom);
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.moveTo(0, canvas.height);
+    ctx.lineTo(0, baseLine);
+
+    for (let x = 0; x <= canvas.width; x += 4) {
+      const y1 = Math.sin(x * 0.08 + step) * waveAmplitude;
+      const y2 = Math.cos(x * 0.12 - step * 0.8) * (waveAmplitude * 0.5);
+      const y = baseLine + y1 + y2;
+      ctx.lineTo(x, y);
+    }
+
+    ctx.lineTo(canvas.width, canvas.height);
+    ctx.closePath();
+    ctx.fill();
+
+    if (splashes.length > 0) {
+      ctx.fillStyle = colors.isDark ? 'rgba(255, 255, 255, 0.8)' : 'rgba(147, 197, 253, 0.8)';
+      splashes.forEach(sp => {
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+        ctx.fill();
+
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.vy += 0.12;
+
+        if (sp.y > canvas.height - targetWaterHeight + 4) {
+          sp.x = Math.random() * canvas.width;
+          sp.y = canvas.height - targetWaterHeight;
+          sp.vy = -Math.random() * 2 - 1;
+        }
+      });
+    }
+
+    const animId = requestAnimationFrame(render);
+    activeCanvasRenderers.push(animId);
+  }
+
+  render();
+}
+
+function renderMatrix() {
+  if (!DATA) return;
+
+  activeCanvasRenderers.forEach(id => cancelAnimationFrame(id));
+  activeCanvasRenderers = [];
+
+  const station = stationSelect.value;
+  const rainData = DATA.payload.Rain[station];
+  const windData = DATA.payload.Wind[station];
+
+  const latestDate = DATA.dates[0];
+  const latestRain = rainData.summary[0] !== null ? rainData.summary[0] : 0;
+
+  // Find latest condition emoji logged in Excel for Hero card
+  let latestEmoji = '🌤️';
+  let latestText = 'Variable Conditions';
+  if (latestDate && DATA.times.length > 0) {
+    for (let j = DATA.times.length - 1; j >= 0; j--) {
+      const t = DATA.times[j];
+      const condObj = (DATA.conditionMap[station] && DATA.conditionMap[station][latestDate] && DATA.conditionMap[station][latestDate][t])
+                   || (DATA.conditionMap[STATION_LABELS[station]] && DATA.conditionMap[STATION_LABELS[station]][latestDate] && DATA.conditionMap[STATION_LABELS[station]][latestDate][t]);
+      if (condObj && condObj.emoji) {
+        latestEmoji = condObj.emoji;
+        latestText = condObj.text;
+        break;
+      }
+    }
+  }
+
+  const latestEval = evaluateWeather(latestRain, latestEmoji, latestText);
+
+  document.getElementById('heroVal').textContent = `${latestRain} mm`;
+  document.getElementById('heroEmoji').textContent = latestEval.emoji;
+  document.getElementById('heroStatus').textContent = `Latest Record (${latestDate}) • ${latestEval.commentary}`;
+
+  const table = document.getElementById('matrixTable');
+  table.innerHTML = '';
+
+  // Header Row
+  const thead = document.createElement('tr');
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Date', className: 'date-col'}));
+  DATA.times.forEach(t => thead.appendChild(Object.assign(document.createElement('th'), {textContent: t})));
+  thead.appendChild(Object.assign(document.createElement('th'), {textContent: 'Daily Remarks', className: 'summary-col'}));
+  table.appendChild(thead);
+
+  // Date Rows (Descending Order)
+  DATA.dates.forEach((d, i) => {
+    const tr = document.createElement('tr');
+    
+    const totalRain = rainData.summary[i] !== null ? rainData.summary[i] : 0;
+
+    // Get 8-Slot Condition Emojis for Date Cell
+    let rowFirstEmoji = '';
+    let rowFirstText = '';
+    const slotEmojis = DATA.times.map(t => {
+      const condObj = (DATA.conditionMap[station] && DATA.conditionMap[station][d] && DATA.conditionMap[station][d][t])
+                   || (DATA.conditionMap[STATION_LABELS[station]] && DATA.conditionMap[STATION_LABELS[station]][d] && DATA.conditionMap[STATION_LABELS[station]][d][t]);
+      const emoji = condObj ? condObj.emoji : '';
+      if (emoji && !rowFirstEmoji) {
+        rowFirstEmoji = emoji;
+        rowFirstText = condObj.text;
+      }
+      return emoji ? `<span class="slot-emoji" title="${t}: ${condObj.text}">${emoji}</span>` : `<span class="slot-emoji empty-emoji">&nbsp;</span>`;
+    }).join('');
+
+    const evalData = evaluateWeather(totalRain, rowFirstEmoji, rowFirstText);
+
+    // Date Cell with 8-slot strip
+    const dateTd = document.createElement('td');
+    dateTd.className = 'date-cell';
+    dateTd.innerHTML = `
+      <div class="date-title">${d}</div>
+      <div class="emoji-slots-strip">${slotEmojis}</div>
+    `;
+    tr.appendChild(dateTd);
+
+    // Hourly Cells Beside Date
+    DATA.times.forEach((t, j) => {
+      const v = rainData.grid[i][j];
+      const wSpeed = windData.grid[i][j] || 0;
+      const td = document.createElement('td');
+      td.className = 'time-cell';
+
+      if (v !== null && v > 0) {
+        const canvas = document.createElement('canvas');
+        canvas.className = 'cell-canvas';
+        canvas.id = `canvas-${i}-${j}`;
+        td.appendChild(canvas);
+
+        const content = document.createElement('div');
+        content.className = 'cell-content';
+        const isDark = v >= 6;
+        const numColor = isDark ? '#FFFFFF' : '#0F172A';
+        content.innerHTML = `<span class="val-num" style="color:${numColor}">${v}</span><span class="val-unit" style="color:${numColor}">mm</span>`;
+        td.appendChild(content);
+
+        setTimeout(() => attachFluidPhysicsCanvas(`canvas-${i}-${j}`, v, wSpeed), 50);
+      } else {
+        td.innerHTML = `<div class="cell-content"></div>`;
+      }
+
+      tr.appendChild(td);
+    });
+
+    // Daily Summary Cell
+    const sumTd = document.createElement('td');
+    sumTd.className = 'summary-cell';
+    sumTd.innerHTML = `
+      <div class="summary-val">${totalRain > 0 ? totalRain + ' mm Total' : '0 mm'}</div>
+      <div class="summary-commentary">${evalData.commentary}</div>
+    `;
+    tr.appendChild(sumTd);
+
+    table.appendChild(tr);
+  });
+}
+
+stationSelect.addEventListener('change', renderMatrix);
+window.addEventListener('resize', renderMatrix);
+window.addEventListener('DOMContentLoaded', autoFetchServerData);
+</script>
+</body>
+</html>
+"""
+
+# ----------------------------------------------------------------------------
+# Orchestration
+# ----------------------------------------------------------------------------
+
+def run_cycle():
+    print(f"[{datetime.now().isoformat()}] Fetching TMD feed & Open-Meteo conditions...")
+    records = fetch_records()
+    print(f"Built {len(records)} row(s) (raw + combined) this cycle.")
+
+    added, total = update_excel(records)
+    print(f"Excel Data sheet updated (+Condition column): +{added} new row(s), {total} total.")
+
+    generate_html_dashboard(HTML_PATH)
+    print(f"Physics Apple Weather UI generated at {HTML_PATH}")
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--once", action="store_true", help="Run a single cycle and exit")
+    args = parser.parse_args()
+
+    if args.once:
+        run_cycle()
+        return
+
+    while True:
+        try:
+            run_cycle()
+        except Exception as e:
+            print(f"Error this cycle: {e}")
+        print(f"Sleeping {INTERVAL_HOURS} hour(s)...")
+        time.sleep(INTERVAL_HOURS * 3600)
+
+if __name__ == "__main__":
+    main()
