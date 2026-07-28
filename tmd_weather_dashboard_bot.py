@@ -578,15 +578,20 @@ CONFIG.stations.forEach(s => {
 
 async function autoFetchServerData() {
   try {
+    if (window.location.protocol === 'file:') {
+      throw new Error("Browsers block local 'file://' CORS fetches. Please view via GitHub Pages or a web server (e.g. 'python -m http.server').");
+    }
     const res = await fetch(CONFIG.xlsx_filename, { cache: 'no-cache' });
-    if (!res.ok) throw new Error("HTTP " + res.status);
+    if (!res.ok) throw new Error("Could not find " + CONFIG.xlsx_filename + " (HTTP " + res.status + ")");
     const buffer = await res.arrayBuffer();
     
     const wb = XLSX.read(buffer, { type: 'array', cellDates: true });
     const sheet = wb.Sheets[CONFIG.data_sheet_name];
-    if (!sheet) throw new Error("Data sheet missing");
+    if (!sheet) throw new Error("Data sheet missing in Excel file");
 
     const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    if (!rows || rows.length === 0) throw new Error("Excel sheet contains no rows");
+
     DATA = buildDataFromRows(rows);
     
     document.getElementById('headerMeta').textContent = 
@@ -594,15 +599,28 @@ async function autoFetchServerData() {
     
     renderMatrix();
   } catch (err) {
-    document.getElementById('headerMeta').textContent = 'Displaying cached telemetry';
+    console.error("Dashboard AutoFetch Error:", err);
+    document.getElementById('headerMeta').textContent = '⚠️ ' + err.message;
+    document.getElementById('heroStatus').textContent = err.message;
   }
 }
 
 function pad(n) { return n.toString().padStart(2, '0'); }
+
 function parseDateTime(v) {
   if (!v) return null;
-  const d = (v instanceof Date) ? v : new Date(v);
-  return isNaN(d.getTime()) ? null : d;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  if (typeof v === 'number') {
+    return new Date((v - 25569) * 86400 * 1000);
+  }
+  if (typeof v === 'string') {
+    var s = v.trim().replace(' ', 'T');
+    var d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+    d = new Date(v);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
 }
 
 function buildDataFromRows(rows) {
@@ -836,7 +854,7 @@ function attachFluidPhysicsCanvas(canvasId, rainVal, windSpeed) {
 }
 
 function renderMatrix() {
-  if (!DATA) return;
+  if (!DATA || !DATA.dates || DATA.dates.length === 0) return;
 
   activeCanvasRenderers.forEach(id => cancelAnimationFrame(id));
   activeCanvasRenderers = [];
